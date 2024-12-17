@@ -13,11 +13,10 @@
 #include <utility>
 #include <unordered_set>
 
-#include <mpi.h>
+#include <omp.h>
 #include <cuda_runtime.h>
 #include <curand.h>
 #include <cuda/std/complex>
-#include <nccl.h>
 
 #include "pipe3.hpp"
 
@@ -36,6 +35,9 @@ int log2_int(int arg) {
 
 typedef double my_float_t;
 typedef cuda::std::complex<my_float_t> my_complex_t;
+
+const int max_num_gpus = 8;
+__constant__ my_complex_t* state_data_device_list_constmem[max_num_gpus];
 
 // 任意のCUDA API関数とその引数を受け取る
 template <typename Func, typename... Args>
@@ -107,23 +109,6 @@ void check_curand(char const* const filename_abs, int const lineno, char const* 
 }
 
 #define CHECK_CURAND(func, ...) check_curand(__FILE__, __LINE__, #func, func, __VA_ARGS__)
-
-
-template <typename Func, typename... Args>
-void check_nccl(char const* const filename_abs, int const lineno, char const* const funcname, Func func, Args&&... args)
-{
-    char const* const strrchr_result = strrchr(filename_abs, '/');
-    char const* const filename = strrchr_result? strrchr_result + 1 : filename_abs;
-
-    ncclResult_t err = func(std::forward<Args>(args)...);
-    if (err != ncclSuccess)
-    {
-        fprintf(stderr, "[debug] %s:%d call:%s error:%s\n", filename, lineno, funcname, ncclGetErrorString(err));
-        exit(1);
-    }
-}
-
-#define CHECK_NCCL(func, ...) check_nccl(__FILE__, __LINE__, #func, func, __VA_ARGS__)
 
 // 可変長引数を取る関数ポインタをラップするテンプレート
 template <typename Func, typename... Args>
@@ -225,9 +210,10 @@ __global__ void normalize_kernel(my_float_t* const data_global, my_float_t const
 }
 
 class hadamard { public:
-    static __device__ __host__ void apply(int64_t const thread_num, int64_t const num_qubits, int64_t const target_qubit_num, my_complex_t* const state_data_device) {
+    static __device__ __host__ void apply(int const num_split_areas, int const log_num_split_areas, int64_t const thread_num, int64_t const num_qubits, int64_t const target_qubit_num, my_complex_t** const state_data) {
 
         uint64_t const lower_mask = (((uint64_t)1)<<target_qubit_num) - (uint64_t)1;
+        uint64_t const split_mask = (((uint64_t)1)<<((uint64_t)(num_qubits - log_num_split_areas))) - (uint64_t)1;
 
         int64_t const index_state_lower = thread_num & lower_mask;
         int64_t const index_state_higher = (thread_num & ~lower_mask) << ((int64_t)1);
@@ -235,134 +221,183 @@ class hadamard { public:
         int64_t const index_state_0 = index_state_lower | index_state_higher;
         int64_t const index_state_1 = index_state_0 | (((int64_t)1)<<target_qubit_num);
 
-        my_complex_t const amp_state_0 = state_data_device[index_state_0];
-        my_complex_t const amp_state_1 = state_data_device[index_state_1];
+        int64_t const index_state_0_split_num = index_state_0 >> (num_qubits - log_num_split_areas);
+        int64_t const index_state_0_split_address = index_state_0 & split_mask;
 
-        state_data_device[index_state_0] = (amp_state_0 + amp_state_1) * INV_SQRT2;
-        state_data_device[index_state_0] = (amp_state_0 - amp_state_1) * INV_SQRT2;
+        int64_t const index_state_1_split_num = index_state_1 >> (num_qubits - log_num_split_areas);
+        int64_t const index_state_1_split_address = index_state_1 & split_mask;
 
+        my_complex_t const amp_state_0 = state_data[index_state_0_split_num][index_state_0_split_address];
+        my_complex_t const amp_state_1 = state_data[index_state_1_split_num][index_state_1_split_address];
+
+        state_data[index_state_0_split_num][index_state_0_split_address] = (amp_state_0 + amp_state_1) * INV_SQRT2;
+        state_data[index_state_1_split_num][index_state_1_split_address] = (amp_state_0 - amp_state_1) * INV_SQRT2;
     }
-
 };
 
 template<class Gate>
-__global__ void cuda_gate(int64_t const num_qubits, int64_t const target_qubit_num, my_complex_t* const state_data_device) {
-    int64_t const thread_num = threadIdx.x + blockIdx.x * blockDim.x;
-    Gate::apply(thread_num, num_qubits, target_qubit_num, state_data_device);
+__global__ void cuda_gate(int const num_split_areas, int const log_num_split_areas, int64_t const split_num, int64_t const num_qubits, int64_t const target_qubit_num) {
+    int64_t const num_qubits_local = num_qubits - log_num_split_areas;
+    int64_t const num_threads_local = ((int64_t)1) << (num_qubits_local-1);
+
+    int64_t const thread_num = threadIdx.x + blockIdx.x * blockDim.x + num_threads_local * split_num;
+    Gate::apply(num_split_areas, log_num_split_areas, thread_num, num_qubits, target_qubit_num, state_data_device_list_constmem);
 }
 
 int main(int argc, char** argv) {
 
-    float elapsed_ms, elapsed_ms_2;
-
     setvbuf(stdout, NULL, _IOLBF, 1024 * 512);
 
-    MPI_Init(&argc, &argv);
-
-    int num_procs, proc_num;
-
-    MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
-    MPI_Comm_rank(MPI_COMM_WORLD, &proc_num);
-
-    if (proc_num==0) {
-        fprintf(stderr, "[info] num_procs=%d\n", num_procs);
+    std::vector<int> gpu_list{0, 1, 2, 3, 4, 5, 6, 7};
+    // std::vector<int> gpu_list{0, 1, 2, 3};
+    int const num_gpus = gpu_list.size();
+    int const log_num_gpus = log2_int(num_gpus);
+    fprintf(stderr, "[info] num_gpus=%d (", num_gpus);
+    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+        fprintf(stderr, "%d, ", gpu_list[gpu_num]);
     }
+    fprintf(stderr, ")\n");
 
-    int const gpu_id = proc_num;
-    // int const gpu_id = 0;
-    CHECK_CUDA(cudaSetDevice, gpu_id);
+    int const num_qubits = 37;
+    fprintf(stderr, "[info] num_qubits=%d\n", num_qubits);
 
-    ncclUniqueId nccl_id;
-    if (proc_num == 0) {
-        CHECK_NCCL(ncclGetUniqueId, &nccl_id);
-    }
-
-    ncclComm_t nccl_comm;
-    MPI_Bcast(&nccl_id, sizeof(nccl_id), MPI_BYTE, 0, MPI_COMM_WORLD);
-    int nccl_rank = proc_num;
-    CHECK_NCCL(ncclCommInitRank, &nccl_comm, num_procs, nccl_id, nccl_rank);
-
-    int const num_qubits = 36;
-    if (proc_num == 0) { fprintf(stderr, "[info] num_qubits=%d\n", num_qubits); }
-
-    uint64_t const swap_buffer_length = UINT64_C(1) << 27;
-
-    std::vector<int> perm_p2l(num_qubits);
-    std::vector<int> perm_l2p(num_qubits);
-
-    for(int qubit_num=0; qubit_num<num_qubits; qubit_num++) {
-        perm_p2l[qubit_num] = qubit_num;
-        perm_l2p[qubit_num] = qubit_num;
-    }
-
-    int const num_samples = 16;
+    int const num_samples = 32;
     int const rng_seed = 12345;
 
-    int const log_num_procs = log2_int(num_procs);
-
     int const log_block_size = 8;
+    fprintf(stderr, "[info] log_block_size=%d\n", log_block_size);
     int const target_qubit_num_begin = 0;
     int const target_qubit_num_end = num_qubits;
+    // int const target_qubit_num_end = 1;
 
-    if (proc_num == 0) { fprintf(stderr, "[info] log_block_size=%d\n", log_block_size); }
+    std::vector<int> gpu_list_dedup;
+    {
+        std::unordered_set<int> gpu_set(gpu_list.begin(), gpu_list.end());
+        gpu_list_dedup = {gpu_set.begin(), gpu_set.end()};
+    }
 
-    cudaStream_t stream;
-    cudaEvent_t event_1;
-    cudaEvent_t event_2;
+    std::vector<cudaStream_t> stream(num_gpus);
+    std::vector<cudaEvent_t> event_1(num_gpus);
+    std::vector<cudaEvent_t> event_2(num_gpus);
 
-    CHECK_CUDA(cudaStreamCreate, &stream);
-    decltype(Defer(cudaStreamDestroy, stream)) defer_destroy_stream(cudaStreamDestroy, stream);
+    std::vector<decltype(Defer(cudaStreamDestroy, stream[0]))> defer_destroy_streams(num_gpus);
+    std::vector<decltype(Defer(cudaEventDestroy, event_1[0]))> defer_destroy_event_1(num_gpus);
+    std::vector<decltype(Defer(cudaEventDestroy, event_2[0]))> defer_destroy_event_2(num_gpus);
 
-    CHECK_CUDA(cudaEventCreateWithFlags, &event_1, cudaEventDefault);
-    decltype(Defer(cudaEventDestroy, event_1)) defer_destroy_event_1(cudaEventDestroy, event_1);
+    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
 
-    CHECK_CUDA(cudaEventCreateWithFlags, &event_2, cudaEventDefault);
-    decltype(Defer(cudaEventDestroy, event_2)) defer_destroy_event_2(cudaEventDestroy, event_2);
+        int const gpu_id = gpu_list[gpu_num]; 
+        CHECK_CUDA(cudaSetDevice, gpu_id);
 
-    int64_t const num_states = ((int64_t)1) << ((int64_t)num_qubits);
+        CHECK_CUDA(cudaStreamCreate, &stream[gpu_num]);
+        defer_destroy_streams[gpu_num] = {cudaStreamDestroy, stream[gpu_num]};
 
-    int const num_qubits_local = num_qubits - log_num_procs;
+        CHECK_CUDA(cudaEventCreateWithFlags, &event_1[gpu_num], cudaEventDefault);
+        defer_destroy_event_1[gpu_num] = {cudaEventDestroy, event_1[gpu_num]};
+
+        CHECK_CUDA(cudaEventCreateWithFlags, &event_2[gpu_num], cudaEventDefault);
+        defer_destroy_event_2[gpu_num] = {cudaEventDestroy, event_2[gpu_num]};
+
+    }
+
+    std::vector<my_complex_t**> state_data_device_list_constmem_addr(num_gpus);
+    for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
+        int const gpu_id = gpu_list[gpu_num];
+        CHECK_CUDA(cudaSetDevice, gpu_id);
+
+        my_complex_t** addr;
+        CHECK_CUDA(cudaGetSymbolAddress<decltype(state_data_device_list_constmem)>, (void**)&addr, state_data_device_list_constmem);
+
+        state_data_device_list_constmem_addr[gpu_num] = addr;
+    }
+
+    int64_t const num_states = INT64_C(1) << num_qubits;
+
+    int const num_qubits_local = num_qubits - log_num_gpus;
     int64_t const num_states_local = ((int64_t)1) << ((int64_t)num_qubits_local);
     int const block_size = 1 << log_block_size;
     int64_t const num_blocks = ((int64_t)1) << ((int64_t)(num_qubits_local - 1 - log_block_size));
 
-    if (proc_num == 0) { fprintf(stderr, "[info] malloc device memory\n"); }
+    fprintf(stderr, "[info] malloc device memory\n");
 
-    my_complex_t* state_data_device;
-    CHECK_CUDA(cudaMalloc<void>, (void**)&state_data_device, num_states_local * sizeof(*state_data_device));
-    decltype(Defer(cudaFree, (void*)0)) defer_free_state_data(cudaFree, (void*)state_data_device);
+    std::vector<my_complex_t*> state_data_device_list(num_gpus);
+    std::vector<decltype(Defer(cudaFree, (void*)0))> defer_free_device_mem(num_gpus);
 
-    my_complex_t* swap_buffer;
-    CHECK_CUDA(cudaMalloc<void>, (void**)&swap_buffer, swap_buffer_length * sizeof(my_complex_t));
-    decltype(Defer(cudaFree, (void*)0)) defer_free_swap_buffer(cudaFree, (void*)swap_buffer);
+    std::vector<my_float_t*> norm_sum_device_list(num_gpus);
+    std::vector<decltype(Defer(cudaFree, (void*)0))> defer_free_norm_sum_device_list(num_gpus);
 
-    my_float_t* norm_sum_device;
-    CHECK_CUDA(cudaMalloc<void>, (void**)&norm_sum_device, (num_states_local>>log_block_size) * sizeof(my_float_t));
-    decltype(Defer(cudaFree, (void*)0)) defer_free_norm_sum_device(cudaFree, (void*)norm_sum_device);
+    for (int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
 
-    if (proc_num == 0) { fprintf(stderr, "[info] generating random state\n"); }
-    curandGenerator_t rng_device;
+        int const gpu_id = gpu_list[gpu_num]; 
+        CHECK_CUDA(cudaSetDevice, gpu_id);
 
-    CHECK_CURAND(curandCreateGenerator, &rng_device, CURAND_RNG_PSEUDO_DEFAULT);
-    CHECK_CURAND(curandSetStream, rng_device, stream);
-    CHECK_CURAND(curandSetPseudoRandomGeneratorSeed, rng_device, rng_seed + proc_num);
+        my_complex_t* state_data_device;
+        CHECK_CUDA(cudaMalloc<void>, (void**)&state_data_device, num_states_local * sizeof(*state_data_device));
+        state_data_device_list[gpu_num] = state_data_device;
 
-    if (proc_num == 0) { fprintf(stderr, "[info] gpu reduce\n"); } 
-    CHECK_CUDA(cudaEventRecord, event_1, stream);
+        defer_free_device_mem[gpu_num] = {cudaFree, (void*)state_data_device};
 
-    CHECK_CURAND(curandGenerateNormalDouble, rng_device, (my_float_t*)(void*)state_data_device, num_states_local * 2, 0.0, 1.0);
+        my_float_t* norm_sum_device;
+        CHECK_CUDA(cudaMalloc<void>, (void**)&norm_sum_device, (INT64_C(1) << (num_qubits - log_block_size)) * sizeof(my_float_t));
+        norm_sum_device_list[gpu_num] = norm_sum_device;
+        defer_free_norm_sum_device_list[gpu_num] = {cudaFree, (void*)norm_sum_device};
 
-    // CHECK_CURAND(curandGenerateNormalDouble, rng_device, (my_float_t*)(void*)state_data_device, num_states_local, 0.0, 1.0);
+    }
 
-    // curandGenerator_t rng_device_2;
+    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+        int const gpu_id = gpu_list[gpu_num];
+        CHECK_CUDA(cudaSetDevice, gpu_id);
+        CHECK_CUDA(cudaMemcpyAsync, state_data_device_list_constmem_addr[gpu_num], &state_data_device_list[0], state_data_device_list.size() * sizeof(state_data_device_list[0]), cudaMemcpyHostToDevice, stream[gpu_num]);
+    }
 
-    // CHECK_CURAND(curandCreateGenerator, &rng_device_2, CURAND_RNG_PSEUDO_DEFAULT);
-    // CHECK_CURAND(curandSetStream, rng_device_2, stream);
-    // CHECK_CURAND(curandSetPseudoRandomGeneratorSeed, rng_device_2, rng_seed + 1);
+    for(int gpu_num = 0; gpu_num < gpu_list_dedup.size(); gpu_num++) {
+        int const gpu_id = gpu_list_dedup[gpu_num]; 
+        for(int gpu_num_2 = 0; gpu_num_2 < gpu_list_dedup.size(); gpu_num_2++) {
+            if(gpu_num == gpu_num_2) continue;
+            int const gpu_id_2 = gpu_list_dedup[gpu_num_2]; 
+            CHECK_CUDA(cudaSetDevice, gpu_id);
+            CHECK_CUDA(cudaDeviceEnablePeerAccess, gpu_id_2, 0);
+        }
+    }
 
-    // CHECK_CURAND(curandGenerateNormalDouble, rng_device_2, &((my_float_t*)(void*)state_data_device)[num_states_local], num_states_local, 0.0, 1.0);
+    for(int gpu_num = 0; gpu_num < gpu_list_dedup.size(); gpu_num++) {
+        int const gpu_id = gpu_list_dedup[gpu_num]; 
+        for(int gpu_num_2 = 0; gpu_num_2 < gpu_list_dedup.size(); gpu_num_2++) {
+            if(gpu_num == gpu_num_2) continue;
+            int const gpu_id_2 = gpu_list_dedup[gpu_num_2]; 
+            int canAccessPeer;
+            CHECK_CUDA(cudaDeviceCanAccessPeer, &canAccessPeer, gpu_id, gpu_id_2);
+            if (!canAccessPeer) {
+                fprintf(stderr, "[error] GPU%d can not access GPU%d\n", gpu_id, gpu_id_2);
+            }
+        }
+    }
 
-    {
+
+    fprintf(stderr, "[info] generating random state\n");
+    std::vector<curandGenerator_t> rng_device_list(num_gpus);
+    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+        int const gpu_id = gpu_list[gpu_num];
+        CHECK_CUDA(cudaSetDevice, gpu_id);
+        CHECK_CURAND(curandCreateGenerator, &rng_device_list[gpu_num], CURAND_RNG_PSEUDO_DEFAULT);
+        CHECK_CURAND(curandSetPseudoRandomGeneratorSeed, rng_device_list[gpu_num], rng_seed + gpu_num);
+        CHECK_CURAND(curandSetStream, rng_device_list[gpu_num], stream[gpu_num]);
+    }
+
+    fprintf(stderr, "[info] gpu reduce\n");
+    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+        int const gpu_id = gpu_list[gpu_num];
+        CHECK_CUDA(cudaSetDevice, gpu_id);
+        CHECK_CUDA(cudaEventRecord, event_1[gpu_num], stream[gpu_num]);
+    }
+
+    std::vector<my_float_t> norm_sum_list(num_gpus);
+    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+        int const gpu_id = gpu_list[gpu_num];
+        CHECK_CUDA(cudaSetDevice, gpu_id);
+
+        CHECK_CURAND(curandGenerateNormalDouble, rng_device_list[gpu_num], (my_float_t*)(void*)state_data_device_list[gpu_num], num_states_local * 2, 0.0, 1.0);
+
         int64_t data_length = num_states_local;
         int64_t num_blocks_reduce;
         int block_size_reduce;
@@ -375,11 +410,11 @@ int main(int argc, char** argv) {
             num_blocks_reduce = 1;
         }
 
-        norm_sum_reduce_kernel<<<num_blocks_reduce, block_size_reduce, sizeof(my_float_t) * block_size_reduce, stream>>>(state_data_device, norm_sum_device);
+        norm_sum_reduce_kernel<<<num_blocks_reduce, block_size_reduce, sizeof(my_float_t) * block_size_reduce, stream[gpu_num]>>>(state_data_device_list[gpu_num], norm_sum_device_list[gpu_num]);
 
         data_length = num_blocks_reduce;
 
-        while (data_length > 1) {
+        while (data_length>1) {
             if (data_length > block_size) {
                 block_size_reduce = block_size;
                 num_blocks_reduce = data_length >> log_block_size;
@@ -388,213 +423,176 @@ int main(int argc, char** argv) {
                 num_blocks_reduce = 1;
             }
 
-            sum_reduce_kernel<<<num_blocks_reduce, block_size_reduce, sizeof(my_float_t) * block_size_reduce, stream>>>(norm_sum_device, norm_sum_device);
+            sum_reduce_kernel<<<num_blocks_reduce, block_size_reduce, sizeof(my_float_t) * block_size_reduce, stream[gpu_num]>>>(norm_sum_device_list[gpu_num], norm_sum_device_list[gpu_num]);
 
             data_length = num_blocks_reduce;
         }
+
+        CHECK_CUDA(cudaMemcpyAsync, &norm_sum_list[gpu_num], norm_sum_device_list[gpu_num], sizeof(my_float_t), cudaMemcpyDeviceToHost, stream[gpu_num]);
     }
 
-    // fprintf(stderr, "[debug] line=%d\n", __LINE__);
-
-    my_float_t norm_sum_local;
-    CHECK_CUDA(cudaMemcpyAsync, &norm_sum_local, norm_sum_device, sizeof(my_float_t), cudaMemcpyDeviceToHost, stream);
-
-    // fprintf(stderr, "[debug] line=%d\n", __LINE__);
-
-    CHECK_CUDA(cudaFree, (void*)norm_sum_device);
-
-    // fprintf(stderr, "[debug] line=%d\n", __LINE__);
-
-    CHECK_CUDA(cudaStreamSynchronize, stream);
-
-    // fprintf(stderr, "[debug] line=%d\n", __LINE__);
-
-    my_float_t norm_sum_global;
-    MPI_Allreduce(&norm_sum_local, &norm_sum_global, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-    if (proc_num == 0) { fprintf(stderr, "[info] norm_sum_global=%lf\n", norm_sum_global); }
-
-    if (proc_num == 0) { fprintf(stderr, "[info] normalize\n"); }
-
-    my_float_t const normalize_factor = 1.0 / sqrt(norm_sum_global);
-    // fprintf(stderr, "[debug] normalize_factor=%.20e\n", normalize_factor);
-
-    // fprintf(stderr, "[debug] line=%d\n", __LINE__);
-
-    normalize_kernel<<<1ULL<<(num_qubits_local+1-log_block_size), block_size, 0, stream>>>((my_float_t*)(void*)state_data_device, normalize_factor);
-
-    // fprintf(stderr, "[debug] line=%d\n", __LINE__);
-
-    CHECK_CUDA(cudaEventRecord, event_2, stream);
-
-    // fprintf(stderr, "[debug] line=%d\n", __LINE__);
-
-    CHECK_CUDA(cudaStreamSynchronize, stream);
-
-    // fprintf(stderr, "[debug] line=%d\n", __LINE__);
-
-    CHECK_CUDA(cudaEventElapsedTime, &elapsed_ms, event_1, event_2);
-
-    // fprintf(stderr, "[debug] line=%d\n", __LINE__);
-
-    MPI_Reduce(&elapsed_ms, &elapsed_ms_2, 1, MPI_FLOAT, MPI_MAX, 0, MPI_COMM_WORLD);
-    elapsed_ms = elapsed_ms_2;
-
-    // fprintf(stderr, "[debug] line=%d\n", __LINE__);
-
-    if(proc_num==0) {
-        fprintf(stderr, "[info] rng elapsed=%lf\n", elapsed_ms * 1e-3);
-        fprintf(stderr, "[info] normalize done\n");
-        fprintf(stderr, "[info] gpu_hadamard\n");
+    for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
+        int const gpu_id = gpu_list[gpu_num];
+        CHECK_CUDA(cudaSetDevice, gpu_id);
+        CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
     }
 
-    MPI_Barrier(MPI_COMM_WORLD);
+    my_float_t norm_sum_gpu = 0;
+    for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
+        int const gpu_id = gpu_list[gpu_num];
+        CHECK_CUDA(cudaSetDevice, gpu_id);
+        CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
+        norm_sum_gpu += norm_sum_list[gpu_num];
+    }
+    fprintf(stderr, "[info] norm_sum_gpu=%lf\n", norm_sum_gpu);
 
-    for(int sample_num=0; sample_num < num_samples; ++sample_num) {
+    fprintf(stderr, "[info] normalize\n");
+    my_float_t const normalize_factor = 1.0 / sqrt(norm_sum_gpu);
+    for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
+        int const gpu_id = gpu_list[gpu_num];
+        CHECK_CUDA(cudaSetDevice, gpu_id);
 
-        CHECK_CUDA(cudaEventRecord, event_1, stream);
+        int64_t data_length = num_states_local * 2;
+        int64_t num_blocks_reduce;
+        int block_size_reduce;
 
-        for(int target_qubit_num_logical = target_qubit_num_begin; target_qubit_num_logical < target_qubit_num_end; target_qubit_num_logical++) {
+        if (data_length > block_size) {
+            block_size_reduce = block_size;
+            num_blocks_reduce = data_length >> log_block_size;
+        } else {
+            block_size_reduce = data_length;
+            num_blocks_reduce = 1;
+        }
 
-            int target_qubit_num_physical = perm_l2p[target_qubit_num_logical];
+        normalize_kernel<<<1ULL<<(num_qubits_local+1-log_block_size), block_size, 0, stream[gpu_num]>>>((my_float_t*)(void*)state_data_device_list[gpu_num], normalize_factor);
 
-            /* target qubits is global */
-            if (target_qubit_num_physical >= num_qubits - log_num_procs) {
-                int64_t const swap_width = UINT64_C(1)<<(target_qubit_num_physical - log_num_procs);
-                int64_t const num_swap_areas = UINT64_C(1)<<(num_qubits - target_qubit_num_physical - 1);
-                // int64_t const pow2_nt_lnp = UINT64_C(1)<<(target_qubit_num_physical - log_num_procs);
-                for(int64_t swap_area_num = 0; swap_area_num < num_swap_areas; swap_area_num++) {
-                    int const fp = (proc_num >> (log_num_procs - num_qubits + target_qubit_num_physical))&1;
+        CHECK_CUDA(cudaEventRecord, event_2[gpu_num], stream[gpu_num]);
+    }
+    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+        int const gpu_id = gpu_list[gpu_num];
+        CHECK_CUDA(cudaSetDevice, gpu_id);
+        CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
+    }
 
-                    // fprintf(stderr, "[debug] nccl_rank=%d fp=%d\n", nccl_rank, fp);
+    double elapsed_rng = 0;
+    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+        int const gpu_id = gpu_list[gpu_num]; 
+        CHECK_CUDA(cudaSetDevice, gpu_id);
 
-                    int64_t const swap_area_begin = (2*swap_area_num+((fp)?0:1)) * swap_width;
-                    // int64_t const swap_area_end = swap_area_begin + swap_width;
-                    int const peer_gpu_num = (proc_num + ((fp)?1:-1) * (UINT64_C(1)<< (target_qubit_num_physical + log_num_procs - num_qubits)) + num_procs) & (num_procs-1);
+        float elapsed_i_ms;
+        CHECK_CUDA(cudaEventElapsedTime, &elapsed_i_ms, event_1[gpu_num], event_2[gpu_num]);
+        double const elapsed_i = elapsed_i_ms * 1e-3;
 
-                    // fprintf(stderr, "[debug] nccl_rank=%d peer_gpu_num=%d\n", nccl_rank, peer_gpu_num);
+        if (elapsed_i > elapsed_rng) {
+            elapsed_rng = elapsed_i;
+        }
+    }
 
-                    int64_t swap_area_dispos = 0;
-                    while (true) {
-                        int64_t swap_length = swap_width - swap_area_dispos;
-                        if (swap_length > swap_buffer_length) {
-                            swap_length = swap_buffer_length;
-                        }
-                        int64_t const swap_area_pos = swap_area_begin + swap_area_dispos;
+    fprintf(stderr, "[info] rng elapsed=%lf\n", elapsed_rng);
+    fprintf(stderr, "[info] gpu_hadamard\n");
 
-                        /* implement swap here*/
-                        if (fp) {
-                            CHECK_NCCL(ncclSend, (void*)&state_data_device[swap_area_pos], swap_length*2, ncclDouble, peer_gpu_num, nccl_comm, stream);
-                            CHECK_NCCL(ncclRecv, (void*)swap_buffer, swap_length * 2, ncclDouble, peer_gpu_num, nccl_comm, stream);
-                        } else {
-                            CHECK_NCCL(ncclRecv, (void*)swap_buffer, swap_length * 2, ncclDouble, peer_gpu_num, nccl_comm, stream);
-                            CHECK_NCCL(ncclSend, (void*)&state_data_device[swap_area_pos], swap_length*2, ncclDouble, peer_gpu_num, nccl_comm, stream);
-                        }
-                        CHECK_CUDA(cudaMemcpyAsync, (void*)&state_data_device[swap_area_pos], (void*)swap_buffer, swap_length*sizeof(my_complex_t), cudaMemcpyDeviceToDevice, stream);
+    for(int sample_num = 0; sample_num < num_samples; ++sample_num) {
 
-                        swap_area_dispos += swap_length;
-                        if (swap_area_dispos==swap_width) {
-                            break;
-                        }
-                    }
-                }
+        for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+            int const gpu_id = gpu_list[gpu_num]; 
+            CHECK_CUDA(cudaSetDevice, gpu_id);
+            CHECK_CUDA(cudaEventRecord, event_1[gpu_num], stream[gpu_num]);
+        }
 
-                int const swap_qubit_num_logical = perm_p2l[target_qubit_num_physical - log_num_procs];
+        for(int target_qubit_num = target_qubit_num_begin; target_qubit_num < target_qubit_num_end; target_qubit_num++) {
 
-                // swap p2l
-                perm_p2l[target_qubit_num_physical] = swap_qubit_num_logical;
-                perm_p2l[target_qubit_num_physical - log_num_procs] = target_qubit_num_logical;
+            for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
 
-                // update l2p
-                perm_l2p[target_qubit_num_logical] = target_qubit_num_physical - log_num_procs;
-                perm_l2p[swap_qubit_num_logical] = target_qubit_num_physical;
+                int const gpu_id = gpu_list[gpu_num]; 
+                CHECK_CUDA(cudaSetDevice, gpu_id);
 
-                target_qubit_num_physical -= log_num_procs;
+                cuda_gate<hadamard><<<num_blocks, block_size, 0, stream[gpu_num]>>>(num_gpus, log_num_gpus, gpu_num, num_qubits, target_qubit_num);
             }
 
-            cuda_gate<hadamard><<<num_blocks, block_size, 0, stream>>>(num_qubits, target_qubit_num_physical, state_data_device);
+            if (target_qubit_num >= num_qubits - log_num_gpus) {
+                for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+                    int const gpu_id = gpu_list[gpu_num]; 
+                    CHECK_CUDA(cudaSetDevice, gpu_id);
+                    CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
+                }
+            }
+
         }
 
-        CHECK_CUDA(cudaEventRecord, event_2, stream);
-
-        CHECK_CUDA(cudaStreamSynchronize, stream);
-
-        CHECK_CUDA(cudaEventElapsedTime, &elapsed_ms, event_1, event_2);
-        MPI_Reduce(&elapsed_ms, &elapsed_ms_2, 1, MPI_FLOAT, MPI_MAX, 0, MPI_COMM_WORLD);
-        elapsed_ms = elapsed_ms_2;
-        if(proc_num==0) {
-            fprintf(stderr, "[info] elapsed_gpu=%f\n", elapsed_ms * 1e-3);
-            fprintf(stdout, "%lf\n", elapsed_ms * 1e-3);
+        for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+            int const gpu_id = gpu_list[gpu_num]; 
+            CHECK_CUDA(cudaSetDevice, gpu_id);
+            CHECK_CUDA(cudaEventRecord, event_2[gpu_num], stream[gpu_num]);
         }
+
+        for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+            int const gpu_id = gpu_list[gpu_num]; 
+            CHECK_CUDA(cudaSetDevice, gpu_id);
+            CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
+        }
+
+        double elapsed_gpu = 0;
+        for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+            int const gpu_id = gpu_list[gpu_num]; 
+            CHECK_CUDA(cudaSetDevice, gpu_id);
+
+            float elapsed_i_ms;
+            CHECK_CUDA(cudaEventElapsedTime, &elapsed_i_ms, event_1[gpu_num], event_2[gpu_num]);
+            double const elapsed_i = elapsed_i_ms * 1e-3;
+
+            if(elapsed_i > elapsed_gpu) {
+                elapsed_gpu = elapsed_i;
+            }
+        }
+        fprintf(stderr, "[info] elapsed_gpu=%lf\n", elapsed_gpu);
+        fprintf(stdout, "%lf\n", elapsed_gpu);
 
     }
 
     if(false) {
-        if(proc_num==0) {
-            fprintf(stderr, "[info] gathering state data\n");
+        fprintf(stderr, "[info] gathering state data\n");
 
-            process cksumproc;
-            char const* const cksumproc_argv[] = {"openssl", "sha256", "-r", NULL};
-            if (popen3(&cksumproc, cksumproc_argv, true, true, false) != 0) {
-                fprintf(stderr, "[errpr] popen3 failed\n");
-                exit(1);
-            }
+        process cksumproc;
+        char const* const cksumproc_argv[] = {"openssl", "sha256", "-r", NULL};
+        if (popen3(&cksumproc, cksumproc_argv, true, true, false) != 0) {
+            fprintf(stderr, "[errpr] popen3 failed\n");
+            exit(1);
+        }
 
-            my_complex_t* state_data_host = (my_complex_t*)malloc(num_states * sizeof(my_complex_t));
-            decltype(Defer(free, (void*)0)) defer_free_state_data_host(free, (void*)state_data_host);
+        my_complex_t* state_data_host = (my_complex_t*)malloc(num_states_local * sizeof(my_complex_t));
+        decltype(Defer(free, (void*)0)) defer_free_state_data_host(free, (void*)state_data_host);
 
-            CHECK_CUDA(cudaMemcpyAsync, state_data_host, state_data_device, num_states_local * sizeof(my_complex_t), cudaMemcpyDeviceToHost, stream);
-            for(int peer_proc_num=1; peer_proc_num<num_procs; peer_proc_num++) {
-                MPI_Status mpi_status;
-                MPI_Recv(&state_data_host[peer_proc_num * num_states_local], num_states_local * 2, MPI_DOUBLE, peer_proc_num, 0, MPI_COMM_WORLD, &mpi_status);
-            }
-            CHECK_CUDA(cudaStreamSynchronize, stream);
+        for(int i = 0; i < num_gpus; i++) {
 
-            for(int64_t state_num_logical = 0; state_num_logical < num_states; state_num_logical++) {
-                int64_t state_num_physical = 0;
-                for(int qubit_num_logical = 0; qubit_num_logical < num_qubits; qubit_num_logical++) {
-                    int qubit_num_physical = perm_l2p[qubit_num_logical];
-                    state_num_physical = state_num_physical | (((state_num_logical >> qubit_num_logical) & 1) << qubit_num_physical);
-                }
-                fwrite(&state_data_host[state_num_physical], sizeof(my_complex_t), 1, cksumproc.stdin);
-            }
-            // for(int64_t state_num_logical = 0; state_num_logical < num_states; state_num_logical++) {
-            //     int64_t state_num_physical = state_num_logical;
-            //     fwrite(&state_data_host[state_num_physical], sizeof(my_complex_t), 1, cksumproc.stdin);
-            // }
-            // fprintf(stderr, "[debug] line=%d\n", __LINE__);
+            int const gpu_i = gpu_list[i]; 
+            CHECK_CUDA(cudaSetDevice, gpu_i);
+            CHECK_CUDA(cudaMemcpyAsync, state_data_host, state_data_device_list[i], num_states_local * sizeof(my_complex_t), cudaMemcpyDeviceToHost, stream[i]);
+            CHECK_CUDA(cudaStreamSynchronize, stream[i]);
 
-            fclose(cksumproc.stdin);
-
-            int cksumbuf_length = 128;
-            char cksumbuf[cksumbuf_length];
-            fread(cksumbuf, 1, cksumbuf_length, cksumproc.stdout);
-            char* cksum_space_pos = strchr(cksumbuf, ' ');
-            if (cksum_space_pos!=NULL) {
-                *cksum_space_pos = '\0';
-            }
-            fprintf(stderr, "[info] check sum: %s\n", cksumbuf);
-
-            // fprintf(stderr, "[debug] line=%d\n", __LINE__);
-
-            int cksumproc_status;
-            waitpid(cksumproc.pid, &cksumproc_status, 0);
-
-            // fprintf(stderr, "[debug] line=%d\n", __LINE__);
-
-            if (cksumproc_status!=0) {
-                fprintf(stderr, "[warn] cksumproc_status=%d\n", cksumproc_status);
-            }
-
-            // fprintf(stderr, "[debug] line=%d\n", __LINE__);
-
-        } else {
-            // for(int proc_num = 1; proc_num < num_procs; proc_num++) {
-            MPI_Send(state_data_device, num_states_local * 2, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+            fwrite(state_data_host, sizeof(my_complex_t), num_states_local, cksumproc.stdin);
+            // for(int data_pos = 0; data_pos < num_states_local; data_pos++) {
+            //     fwrite(&state_data_host[data_pos], sizeof(my_complex_t), 1, cksumproc.stdin);
             // }
         }
-    }
 
-    MPI_Finalize();
+        fclose(cksumproc.stdin);
+
+        int cksumbuf_length = 128;
+        char cksumbuf[cksumbuf_length];
+        fread(cksumbuf, 1, cksumbuf_length, cksumproc.stdout);
+        char* cksum_space_pos = strchr(cksumbuf, ' ');
+        if (cksum_space_pos != NULL) {
+            *cksum_space_pos = '\0';
+        }
+        fprintf(stderr, "[info] check sum: %s\n", cksumbuf);
+
+        int cksumproc_status;
+        waitpid(cksumproc.pid, &cksumproc_status, 0);
+
+        if (cksumproc_status!=0) {
+            fprintf(stderr, "[warn] cksumproc_status=%d\n", cksumproc_status);
+        }
+    }
 
     return 0;
 
