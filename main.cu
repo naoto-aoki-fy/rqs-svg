@@ -13,12 +13,11 @@
 #include <utility>
 #include <unordered_set>
 
+#include <openssl/evp.h>
 #include <omp.h>
 #include <cuda_runtime.h>
 #include <curand.h>
 #include <cuda/std/complex>
-
-#include "pipe3.hpp"
 
 #define SQRT2 (1.41421356237309504880168872420969807856967187537694)
 #define INV_SQRT2 (1.0/SQRT2)
@@ -258,10 +257,10 @@ int main(int argc, char** argv) {
     }
     fprintf(stderr, ")\n");
 
-    int const num_qubits = 37;
+    int const num_qubits = 24;
     fprintf(stderr, "[info] num_qubits=%d\n", num_qubits);
 
-    int const num_samples = 32;
+    int const num_samples = 1;
     int const rng_seed = 12345;
 
     int const log_block_size = 8;
@@ -549,13 +548,18 @@ int main(int argc, char** argv) {
 
     }
 
-    if(false) {
+    if (false) {
         fprintf(stderr, "[info] gathering state data\n");
 
-        process cksumproc;
-        char const* const cksumproc_argv[] = {"openssl", "sha256", "-r", NULL};
-        if (popen3(&cksumproc, cksumproc_argv, true, true, false) != 0) {
-            fprintf(stderr, "[errpr] popen3 failed\n");
+        EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
+        if (!mdctx) {
+            perror("EVP_MD_CTX_new failed");
+            exit(1);
+        }
+
+        if (EVP_DigestInit_ex(mdctx, EVP_sha256(), NULL) != 1) {
+            perror("EVP_DigestInit_ex failed");
+            EVP_MD_CTX_free(mdctx);
             exit(1);
         }
 
@@ -569,29 +573,30 @@ int main(int argc, char** argv) {
             CHECK_CUDA(cudaMemcpyAsync, state_data_host, state_data_device_list[i], num_states_local * sizeof(my_complex_t), cudaMemcpyDeviceToHost, stream[i]);
             CHECK_CUDA(cudaStreamSynchronize, stream[i]);
 
-            fwrite(state_data_host, sizeof(my_complex_t), num_states_local, cksumproc.stdin);
-            // for(int data_pos = 0; data_pos < num_states_local; data_pos++) {
-            //     fwrite(&state_data_host[data_pos], sizeof(my_complex_t), 1, cksumproc.stdin);
-            // }
+            // fwrite(state_data_host, sizeof(my_complex_t), num_states_local, cksumproc.stdin);
+            if (EVP_DigestUpdate(mdctx, state_data_host, num_states_local * sizeof(my_complex_t)) != 1) {
+                perror("EVP_DigestUpdate failed");
+                EVP_MD_CTX_free(mdctx);
+                exit(1);
+            }
         }
 
-        fclose(cksumproc.stdin);
-
-        int cksumbuf_length = 128;
-        char cksumbuf[cksumbuf_length];
-        fread(cksumbuf, 1, cksumbuf_length, cksumproc.stdout);
-        char* cksum_space_pos = strchr(cksumbuf, ' ');
-        if (cksum_space_pos != NULL) {
-            *cksum_space_pos = '\0';
+        unsigned char evp_hash[EVP_MAX_MD_SIZE];
+        unsigned int evp_hash_len;
+        if (EVP_DigestFinal_ex(mdctx, evp_hash, &evp_hash_len) != 1) {
+            perror("EVP_DigestFinal_ex failed");
+            EVP_MD_CTX_free(mdctx);
+            exit(1);
         }
-        fprintf(stderr, "[info] check sum: %s\n", cksumbuf);
 
-        int cksumproc_status;
-        waitpid(cksumproc.pid, &cksumproc_status, 0);
-
-        if (cksumproc_status!=0) {
-            fprintf(stderr, "[warn] cksumproc_status=%d\n", cksumproc_status);
+        fprintf(stderr, "[info] checksum: ");
+        for (unsigned int i = 0; i < evp_hash_len; i++) {
+            fprintf(stderr, "%02x", evp_hash[i]);
         }
+        fprintf(stderr, "\n");
+
+        EVP_MD_CTX_free(mdctx);
+
     }
 
     return 0;
