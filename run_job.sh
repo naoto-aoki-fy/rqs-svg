@@ -2,7 +2,7 @@
 
 set -e
 
-WORKDIR="20250219_1026_a100_openssl"
+WORKDIR="20250219_1328_integrity"
 WORKDIR="${WORKDIR%/}"
 mkdir -p "${WORKDIR}"
 

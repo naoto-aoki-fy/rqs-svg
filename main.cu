@@ -208,7 +208,7 @@ __global__ void normalize_kernel(my_float_t* const data_global, my_float_t const
     data_global[idx] *= factor;
 }
 
-class hadamard { public:
+class hadamard_naive { public:
     static __device__ __host__ void apply(int const num_split_areas, int const log_num_split_areas, int64_t const thread_num, int64_t const num_qubits, int64_t const target_qubit_num, my_complex_t** const state_data) {
 
         uint64_t const lower_mask = (((uint64_t)1)<<target_qubit_num) - (uint64_t)1;
@@ -234,6 +234,44 @@ class hadamard { public:
     }
 };
 
+class hadamard_proposed { public:
+    static __device__ __host__ void apply(int const num_split_areas, int const log_num_split_areas, int64_t const thread_num, int64_t const num_qubits, int64_t const target_qubit_num, my_complex_t** const state_data) {
+
+        uint64_t const split_mask = (((uint64_t)1)<<((uint64_t)(num_qubits - log_num_split_areas))) - (uint64_t)1;
+
+        uint64_t const local_mask = (((uint64_t)1)<<((uint64_t)(num_qubits - log_num_split_areas - 1))) - (uint64_t)1;
+
+        uint64_t const index_global = thread_num & ~local_mask;
+        uint64_t const index_local = thread_num & local_mask;
+        uint64_t const target_index = ((thread_num >> target_qubit_num) & 1) << (num_qubits - log_num_split_areas - 1);
+
+        int64_t const index_state_0 =
+            (
+                (index_global << 1)
+                | target_index
+                | index_local
+            ) & ~(((uint64_t)1)<<target_qubit_num);
+
+        int64_t const index_state_1 = index_state_0 | (((uint64_t)1)<<target_qubit_num);
+
+
+
+        int64_t const index_state_0_split_num = index_state_0 >> (num_qubits - log_num_split_areas);
+        int64_t const index_state_0_split_address = index_state_0 & split_mask;
+
+        int64_t const index_state_1_split_num = index_state_1 >> (num_qubits - log_num_split_areas);
+        int64_t const index_state_1_split_address = index_state_1 & split_mask;
+
+        my_complex_t const amp_state_0 = state_data[index_state_0_split_num][index_state_0_split_address];
+        my_complex_t const amp_state_1 = state_data[index_state_1_split_num][index_state_1_split_address];
+
+        state_data[index_state_0_split_num][index_state_0_split_address] = (amp_state_0 + amp_state_1) * INV_SQRT2;
+        state_data[index_state_1_split_num][index_state_1_split_address] = (amp_state_0 - amp_state_1) * INV_SQRT2;
+    }
+};
+
+typedef hadamard_naive hadamard;
+
 template<class Gate>
 __global__ void cuda_gate(int const num_split_areas, int const log_num_split_areas, int64_t const split_num, int64_t const num_qubits, int64_t const target_qubit_num) {
     int64_t const num_qubits_local = num_qubits - log_num_split_areas;
@@ -246,6 +284,9 @@ __global__ void cuda_gate(int const num_split_areas, int const log_num_split_are
 int main(int argc, char** argv) {
 
     setvbuf(stdout, NULL, _IOLBF, 1024 * 512);
+
+    bool const do_normalization = false;
+    bool const calc_checksum = true;
 
     std::vector<int> gpu_list{0, 1, 2, 3, 4, 5, 6, 7};
     // std::vector<int> gpu_list{0, 1, 2, 3};
@@ -260,7 +301,7 @@ int main(int argc, char** argv) {
     int const num_qubits = 24;
     fprintf(stderr, "[info] num_qubits=%d\n", num_qubits);
 
-    int const num_samples = 1;
+    int const num_samples = 64;
     int const rng_seed = 12345;
 
     int const log_block_size = 8;
@@ -383,37 +424,26 @@ int main(int argc, char** argv) {
         CHECK_CURAND(curandSetStream, rng_device_list[gpu_num], stream[gpu_num]);
     }
 
-    fprintf(stderr, "[info] gpu reduce\n");
-    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-        int const gpu_id = gpu_list[gpu_num];
-        CHECK_CUDA(cudaSetDevice, gpu_id);
-        CHECK_CUDA(cudaEventRecord, event_1[gpu_num], stream[gpu_num]);
-    }
+    if (do_normalization) {
 
-    std::vector<my_float_t> norm_sum_list(num_gpus);
-    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-        int const gpu_id = gpu_list[gpu_num];
-        CHECK_CUDA(cudaSetDevice, gpu_id);
-
-        CHECK_CURAND(curandGenerateNormalDouble, rng_device_list[gpu_num], (my_float_t*)(void*)state_data_device_list[gpu_num], num_states_local * 2, 0.0, 1.0);
-
-        int64_t data_length = num_states_local;
-        int64_t num_blocks_reduce;
-        int block_size_reduce;
-
-        if (data_length > block_size) {
-            block_size_reduce = block_size;
-            num_blocks_reduce = data_length >> log_block_size;
-        } else {
-            block_size_reduce = data_length;
-            num_blocks_reduce = 1;
+        fprintf(stderr, "[info] gpu reduce\n");
+        for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+            int const gpu_id = gpu_list[gpu_num];
+            CHECK_CUDA(cudaSetDevice, gpu_id);
+            CHECK_CUDA(cudaEventRecord, event_1[gpu_num], stream[gpu_num]);
         }
 
-        norm_sum_reduce_kernel<<<num_blocks_reduce, block_size_reduce, sizeof(my_float_t) * block_size_reduce, stream[gpu_num]>>>(state_data_device_list[gpu_num], norm_sum_device_list[gpu_num]);
+        std::vector<my_float_t> norm_sum_list(num_gpus);
+        for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+            int const gpu_id = gpu_list[gpu_num];
+            CHECK_CUDA(cudaSetDevice, gpu_id);
 
-        data_length = num_blocks_reduce;
+            CHECK_CURAND(curandGenerateNormalDouble, rng_device_list[gpu_num], (my_float_t*)(void*)state_data_device_list[gpu_num], num_states_local * 2, 0.0, 1.0);
 
-        while (data_length>1) {
+            int64_t data_length = num_states_local;
+            int64_t num_blocks_reduce;
+            int block_size_reduce;
+
             if (data_length > block_size) {
                 block_size_reduce = block_size;
                 num_blocks_reduce = data_length >> log_block_size;
@@ -422,72 +452,86 @@ int main(int argc, char** argv) {
                 num_blocks_reduce = 1;
             }
 
-            sum_reduce_kernel<<<num_blocks_reduce, block_size_reduce, sizeof(my_float_t) * block_size_reduce, stream[gpu_num]>>>(norm_sum_device_list[gpu_num], norm_sum_device_list[gpu_num]);
+            norm_sum_reduce_kernel<<<num_blocks_reduce, block_size_reduce, sizeof(my_float_t) * block_size_reduce, stream[gpu_num]>>>(state_data_device_list[gpu_num], norm_sum_device_list[gpu_num]);
 
             data_length = num_blocks_reduce;
+
+            while (data_length>1) {
+                if (data_length > block_size) {
+                    block_size_reduce = block_size;
+                    num_blocks_reduce = data_length >> log_block_size;
+                } else {
+                    block_size_reduce = data_length;
+                    num_blocks_reduce = 1;
+                }
+
+                sum_reduce_kernel<<<num_blocks_reduce, block_size_reduce, sizeof(my_float_t) * block_size_reduce, stream[gpu_num]>>>(norm_sum_device_list[gpu_num], norm_sum_device_list[gpu_num]);
+
+                data_length = num_blocks_reduce;
+            }
+
+            CHECK_CUDA(cudaMemcpyAsync, &norm_sum_list[gpu_num], norm_sum_device_list[gpu_num], sizeof(my_float_t), cudaMemcpyDeviceToHost, stream[gpu_num]);
         }
 
-        CHECK_CUDA(cudaMemcpyAsync, &norm_sum_list[gpu_num], norm_sum_device_list[gpu_num], sizeof(my_float_t), cudaMemcpyDeviceToHost, stream[gpu_num]);
-    }
-
-    for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
-        int const gpu_id = gpu_list[gpu_num];
-        CHECK_CUDA(cudaSetDevice, gpu_id);
-        CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
-    }
-
-    my_float_t norm_sum_gpu = 0;
-    for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
-        int const gpu_id = gpu_list[gpu_num];
-        CHECK_CUDA(cudaSetDevice, gpu_id);
-        CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
-        norm_sum_gpu += norm_sum_list[gpu_num];
-    }
-    fprintf(stderr, "[info] norm_sum_gpu=%lf\n", norm_sum_gpu);
-
-    fprintf(stderr, "[info] normalize\n");
-    my_float_t const normalize_factor = 1.0 / sqrt(norm_sum_gpu);
-    for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
-        int const gpu_id = gpu_list[gpu_num];
-        CHECK_CUDA(cudaSetDevice, gpu_id);
-
-        int64_t data_length = num_states_local * 2;
-        int64_t num_blocks_reduce;
-        int block_size_reduce;
-
-        if (data_length > block_size) {
-            block_size_reduce = block_size;
-            num_blocks_reduce = data_length >> log_block_size;
-        } else {
-            block_size_reduce = data_length;
-            num_blocks_reduce = 1;
+        for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
+            int const gpu_id = gpu_list[gpu_num];
+            CHECK_CUDA(cudaSetDevice, gpu_id);
+            CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
         }
 
-        normalize_kernel<<<1ULL<<(num_qubits_local+1-log_block_size), block_size, 0, stream[gpu_num]>>>((my_float_t*)(void*)state_data_device_list[gpu_num], normalize_factor);
-
-        CHECK_CUDA(cudaEventRecord, event_2[gpu_num], stream[gpu_num]);
-    }
-    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-        int const gpu_id = gpu_list[gpu_num];
-        CHECK_CUDA(cudaSetDevice, gpu_id);
-        CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
-    }
-
-    double elapsed_rng = 0;
-    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-        int const gpu_id = gpu_list[gpu_num]; 
-        CHECK_CUDA(cudaSetDevice, gpu_id);
-
-        float elapsed_i_ms;
-        CHECK_CUDA(cudaEventElapsedTime, &elapsed_i_ms, event_1[gpu_num], event_2[gpu_num]);
-        double const elapsed_i = elapsed_i_ms * 1e-3;
-
-        if (elapsed_i > elapsed_rng) {
-            elapsed_rng = elapsed_i;
+        my_float_t norm_sum_gpu = 0;
+        for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
+            int const gpu_id = gpu_list[gpu_num];
+            CHECK_CUDA(cudaSetDevice, gpu_id);
+            CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
+            norm_sum_gpu += norm_sum_list[gpu_num];
         }
-    }
+        fprintf(stderr, "[info] norm_sum_gpu=%lf\n", norm_sum_gpu);
 
-    fprintf(stderr, "[info] rng elapsed=%lf\n", elapsed_rng);
+        fprintf(stderr, "[info] normalize\n");
+        my_float_t const normalize_factor = 1.0 / sqrt(norm_sum_gpu);
+        for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
+            int const gpu_id = gpu_list[gpu_num];
+            CHECK_CUDA(cudaSetDevice, gpu_id);
+
+            int64_t data_length = num_states_local * 2;
+            int64_t num_blocks_reduce;
+            int block_size_reduce;
+
+            if (data_length > block_size) {
+                block_size_reduce = block_size;
+                num_blocks_reduce = data_length >> log_block_size;
+            } else {
+                block_size_reduce = data_length;
+                num_blocks_reduce = 1;
+            }
+
+            normalize_kernel<<<1ULL<<(num_qubits_local+1-log_block_size), block_size, 0, stream[gpu_num]>>>((my_float_t*)(void*)state_data_device_list[gpu_num], normalize_factor);
+
+            CHECK_CUDA(cudaEventRecord, event_2[gpu_num], stream[gpu_num]);
+        }
+        for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+            int const gpu_id = gpu_list[gpu_num];
+            CHECK_CUDA(cudaSetDevice, gpu_id);
+            CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
+        }
+
+        double elapsed_rng = 0;
+        for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+            int const gpu_id = gpu_list[gpu_num]; 
+            CHECK_CUDA(cudaSetDevice, gpu_id);
+
+            float elapsed_i_ms;
+            CHECK_CUDA(cudaEventElapsedTime, &elapsed_i_ms, event_1[gpu_num], event_2[gpu_num]);
+            double const elapsed_i = elapsed_i_ms * 1e-3;
+
+            if (elapsed_i > elapsed_rng) {
+                elapsed_rng = elapsed_i;
+            }
+        }
+
+        fprintf(stderr, "[info] rng elapsed=%lf\n", elapsed_rng);
+    }
     fprintf(stderr, "[info] gpu_hadamard\n");
 
     for(int sample_num = 0; sample_num < num_samples; ++sample_num) {
@@ -548,7 +592,7 @@ int main(int argc, char** argv) {
 
     }
 
-    if (false) {
+    if (calc_checksum) {
         fprintf(stderr, "[info] gathering state data\n");
 
         EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
