@@ -26,6 +26,8 @@
 #include <cuda/std/complex>
 #include <cuda/std/array>
 #include <cub/cub.cuh>
+#include <thrust/iterator/counting_iterator.h>
+#include <thrust/iterator/transform_iterator.h>
 #include <nccl.h>
 #include <openssl/evp.h>
 
@@ -1044,8 +1046,9 @@ int measure_qubit(int const measure_qubit_num_logical) {
 
         cubUtility::IndirectLoad loader;
 
-        using CountingIter = cub::CountingInputIterator<uint64_t>;
-        using TransformIter = cub::TransformInputIterator<float2_t, decltype(loader), CountingIter>;
+        using CountingIter = thrust::counting_iterator<uint64_t>;
+        using TransformIter = thrust::transform_iterator<decltype(loader), CountingIter>;
+
 
         CountingIter counting(0);
         TransformIter in_it(counting, loader);
