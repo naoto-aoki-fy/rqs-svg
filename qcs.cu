@@ -19,6 +19,7 @@
 #include <string>
 #include <unordered_set>
 #include <tuple>
+#include <type_traits>
 
 #include <mpi.h>
 #include <cuda_runtime.h>
@@ -137,7 +138,7 @@ struct kernel_input_qnlist_struct {
     }
 }; /* kernel_input_qnlist_struct */
 
-static __device__ void thread_num_to_state_index(uint64_t thread_num, uint64_t& index_state_0, uint64_t& index_state_1, int& measured_state) {
+static __device__ void thread_num_to_state_index_q1(uint64_t thread_num, uint64_t& index_state_0, uint64_t& index_state_1, int& is_measured_bits, int& measured_value_bits) {
     auto args = (qcs::kernel_input_qnlist_struct const*)(void*)qcs::kernel_input_constant;
 
     index_state_0 = 0;
@@ -168,21 +169,52 @@ static __device__ void thread_num_to_state_index(uint64_t thread_num, uint64_t& 
     auto const target_qubit_num = args->get_target_qubit_num_list()[0];
     index_state_1 = index_state_0 | (UINT64_C(1) << target_qubit_num);
 
-    if (args->is_measured_bits & 1) {
-        if (args->measured_value_bits & 1) {
-            measured_state = 1;
-        } else {
-            measured_state = 0;
-        }
-    } else {
-        measured_state = -1;
+    is_measured_bits = args->is_measured_bits;
+    measured_value_bits = args->measured_value_bits;
+
+} /* thread_num_to_state_index */
+
+static __device__ void thread_num_to_state_index_q2(uint64_t thread_num, uint64_t& index_state_00, uint64_t& index_state_01, uint64_t& index_state_10, uint64_t& index_state_11, int& is_measured_bits, int& measured_value_bits) {
+    auto args = (qcs::kernel_input_qnlist_struct const*)(void*)qcs::kernel_input_constant;
+
+    index_state_00 = 0;
+
+    int const num_operand_qubits = args->get_num_operand_qubits();
+    int const* const qubit_num_list_sorted = args->get_operand_qubit_num_list_sorted();
+
+    // generate index_state_00
+    // ignoring positive control qubits
+    uint64_t lower_mask = 0;
+    for(int i = 0; i < num_operand_qubits; i++) {
+        uint64_t const mask = (UINT64_C(1) << (qubit_num_list_sorted[i] - i)) - 1;
+        uint64_t const upper_mask = mask & ~lower_mask;
+        lower_mask = mask;
+        index_state_00 |= (thread_num & upper_mask) << i;
     }
+    index_state_00 |= (thread_num & ~lower_mask) << num_operand_qubits;
+
+    // update index_state_0
+    // considering positive control qubits
+    int const* const positive_control_qubit_num_list = args->get_positive_control_qubit_num_list();
+    for(int i = 0; i < args->num_positive_control_qubits; i++) {
+        index_state_00 |= UINT64_C(1) << positive_control_qubit_num_list[i];
+    }
+
+    // generate index_state_1
+    auto target_qubit_num_list = args->get_target_qubit_num_list();
+    index_state_01 = index_state_00 | (UINT64_C(1) << target_qubit_num_list[0]);
+    index_state_10 = index_state_00 | (UINT64_C(1) << target_qubit_num_list[1]);
+    index_state_11 = index_state_00 | (UINT64_C(1) << target_qubit_num_list[0]) | (UINT64_C(1) << target_qubit_num_list[1]);
+
+    is_measured_bits = args->is_measured_bits;
+    measured_value_bits = args->measured_value_bits;
 
 } /* thread_num_to_state_index */
 
 namespace gate {
 
     struct hadamard {
+        static constexpr unsigned int num_target_qubits = 1;
         __device__ void apply(qcs::complex_t const s0_in, qcs::complex_t const s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
             s0_out = s0_in + s1_in;
             s1_out = s0_in - s1_in;
@@ -190,16 +222,26 @@ namespace gate {
     };
 
     struct identity {
-        __device__ void apply(qcs::complex_t const s0_in, qcs::complex_t const s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
-            s0_out = s0_in;
-            s1_out = s1_in;
+        static constexpr unsigned int num_target_qubits = 0;
+        __device__ void apply() const {
         }
     };
 
     struct x {
+        static constexpr unsigned int num_target_qubits = 1;
         __device__ void apply(qcs::complex_t const s0_in, qcs::complex_t const s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
             s0_out = s1_in;
             s1_out = s0_in;
+        }
+    };
+
+    struct swap {
+        static constexpr unsigned int num_target_qubits = 2;
+        __device__ void apply(qcs::complex_t const s00_in, qcs::complex_t const s01_in, qcs::complex_t const s10_in, qcs::complex_t const s11_in, qcs::complex_t& s00_out, qcs::complex_t& s01_out, qcs::complex_t& s10_out, qcs::complex_t& s11_out) const {
+            // s00_out = s00_in;
+            s01_out = s10_in;
+            s10_out = s01_in;
+            // s11_out = s11_in;
         }
     };
 
@@ -224,18 +266,85 @@ __global__ void clear_alternative_state(int target_qubit_num, int measured_value
 }
 
 template<typename GateType>
-__global__ void cuda_gate(GateType const gateobj) {
-
+__global__
+typename std::enable_if<GateType::num_target_qubits==1>::type
+cuda_gate(GateType const gateobj) {
     int64_t const thread_num = (uint64_t)threadIdx.x + (uint64_t)blockIdx.x * (uint64_t)blockDim.x;
 
     uint64_t index_state_0, index_state_1;
-    int measured_state;
-    thread_num_to_state_index(thread_num, index_state_0, index_state_1, measured_state);
+    int is_measured_bits, measured_value_bits;
+    thread_num_to_state_index_q1(thread_num, index_state_0, index_state_1, is_measured_bits, measured_value_bits);
 
-    qcs::complex_t const s0_in = (measured_state != 1)? qcs::kernel_common_constant.state_data_device[index_state_0] : 0;
-    qcs::complex_t const s1_in = (measured_state != 0)? qcs::kernel_common_constant.state_data_device[index_state_1] : 0;
+    qcs::complex_t s0_in, s1_in;
+
+    if (
+        (!(is_measured_bits) || ((is_measured_bits) && (measured_value_bits)==0))
+    ) {
+        s0_in = qcs::kernel_common_constant.state_data_device[index_state_0];
+    } else {
+        s0_in = 0;
+    }
+
+    if (
+        (!(is_measured_bits) || ((is_measured_bits) && (measured_value_bits)==1))
+    ) {
+        s1_in = qcs::kernel_common_constant.state_data_device[index_state_1];
+    } else {
+        s1_in = 0;
+    }
 
     gateobj.apply(s0_in, s1_in, qcs::kernel_common_constant.state_data_device[index_state_0], qcs::kernel_common_constant.state_data_device[index_state_1]);
+}
+
+template<typename GateType>
+__global__
+typename std::enable_if<GateType::num_target_qubits==2>::type
+cuda_gate(GateType const gateobj) {
+    int64_t const thread_num = (uint64_t)threadIdx.x + (uint64_t)blockIdx.x * (uint64_t)blockDim.x;
+
+    uint64_t index_state_00, index_state_01, index_state_10, index_state_11;
+    int is_measured_bits, measured_value_bits;
+    thread_num_to_state_index_q2(thread_num, index_state_00, index_state_01, index_state_10, index_state_11, is_measured_bits, measured_value_bits);
+
+    qcs::complex_t s00_in, s01_in, s10_in, s11_in;
+
+    if (
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==0)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==0))
+    ) {
+        s00_in = qcs::kernel_common_constant.state_data_device[index_state_00];
+    } else {
+        s00_in = 0;
+    }
+
+    if (
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==0)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==1))
+    ) {
+        s01_in = qcs::kernel_common_constant.state_data_device[index_state_01];
+    } else {
+        s01_in = 0;
+    }
+
+    if (
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==1)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==0))
+    ) {
+        s10_in = qcs::kernel_common_constant.state_data_device[index_state_10];
+    } else {
+        s10_in = 0;
+    }
+
+    if (
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==1)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==1))
+    ) {
+        s11_in = qcs::kernel_common_constant.state_data_device[index_state_11];
+    } else {
+        s11_in = 0;
+    }
+
+    gateobj.apply(s00_in, s01_in, s10_in, s11_in, qcs::kernel_common_constant.state_data_device[index_state_00], qcs::kernel_common_constant.state_data_device[index_state_01], qcs::kernel_common_constant.state_data_device[index_state_10], qcs::kernel_common_constant.state_data_device[index_state_11]);
 }
 
 namespace cubUtility {
@@ -251,8 +360,8 @@ namespace cubUtility {
         __device__ qcs::float2_t operator()(uint64_t thread_num) const
         {
             uint64_t index_state_0, index_state_1;
-            int measured_state;
-            thread_num_to_state_index(thread_num, index_state_0, index_state_1, measured_state);
+            int is_measured_bits, measured_value_bits;
+            thread_num_to_state_index_q1(thread_num, index_state_0, index_state_1, is_measured_bits, measured_value_bits);
 
             // since target_qubit must be unmeasured, branching is not necessary.
             return qcs::float2_t{
@@ -1137,6 +1246,8 @@ int measure_qubit(int const measure_qubit_num_logical) {
 template<typename GateType>
 void operate_gate(GateType gateobj, std::vector<int>&& target_qubit_num_logical_list_input, std::vector<int>&& negative_control_qubit_num_logical_list_input, std::vector<int>&& positive_control_qubit_num_logical_list_input) {
 
+    assert(target_qubit_num_logical_list_input.size() == GateType::num_target_qubits);
+
     target_qubit_num_logical_list = std::move(target_qubit_num_logical_list_input);
     // todo: move?
     negative_control_qubit_num_logical_list = (negative_control_qubit_num_logical_list_input);
@@ -1371,6 +1482,15 @@ void simulator::set_random_state() {
     core->initialize_use_curand();
 }
 
+void simulator::swap(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::swap(), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::swap_pow(double exponent, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
 void simulator::hadamard(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
     ensure_qubits_allocated();
     core->operate_gate(gate::hadamard(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
@@ -1388,7 +1508,6 @@ void simulator::gate_x(int target_qubit_num, std::vector<int>&& negctrl_qubit_nu
 void simulator::gate_x_pow(double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
     throw std::runtime_error("not implemented");
 }
-
 
 void simulator::gate_u4(double theta, double phi, double lambda, double gamma, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list)  { throw std::runtime_error("not implemented"); }
 
