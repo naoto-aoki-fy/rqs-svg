@@ -138,6 +138,34 @@ struct kernel_input_qnlist_struct {
     }
 }; /* kernel_input_qnlist_struct */
 
+static __device__ void thread_num_to_state_index_q0(uint64_t thread_num, uint64_t& index_state) {
+    auto args = (qcs::kernel_input_qnlist_struct const*)(void*)qcs::kernel_input_constant;
+
+    index_state = 0;
+
+    int const num_operand_qubits = args->get_num_operand_qubits();
+    int const* const qubit_num_list_sorted = args->get_operand_qubit_num_list_sorted();
+
+    // generate index_state
+    // ignoring positive control qubits
+    uint64_t lower_mask = 0;
+    for(int i = 0; i < num_operand_qubits; i++) {
+        uint64_t const mask = (UINT64_C(1) << (qubit_num_list_sorted[i] - i)) - 1;
+        uint64_t const upper_mask = mask & ~lower_mask;
+        lower_mask = mask;
+        index_state |= (thread_num & upper_mask) << i;
+    }
+    index_state |= (thread_num & ~lower_mask) << num_operand_qubits;
+
+    // update index_state
+    // considering positive control qubits
+    int const* const positive_control_qubit_num_list = args->get_positive_control_qubit_num_list();
+    for(int i = 0; i < args->num_positive_control_qubits; i++) {
+        index_state |= UINT64_C(1) << positive_control_qubit_num_list[i];
+    }
+
+} /* thread_num_to_state_index_q0 */
+
 static __device__ void thread_num_to_state_index_q1(uint64_t thread_num, uint64_t& index_state_0, uint64_t& index_state_1, int& is_measured_bits, int& measured_value_bits) {
     auto args = (qcs::kernel_input_qnlist_struct const*)(void*)qcs::kernel_input_constant;
 
@@ -172,7 +200,7 @@ static __device__ void thread_num_to_state_index_q1(uint64_t thread_num, uint64_
     is_measured_bits = args->is_measured_bits;
     measured_value_bits = args->measured_value_bits;
 
-} /* thread_num_to_state_index */
+} /* thread_num_to_state_index_q1 */
 
 static __device__ void thread_num_to_state_index_q2(uint64_t thread_num, uint64_t& index_state_00, uint64_t& index_state_01, uint64_t& index_state_10, uint64_t& index_state_11, int& is_measured_bits, int& measured_value_bits) {
     auto args = (qcs::kernel_input_qnlist_struct const*)(void*)qcs::kernel_input_constant;
@@ -209,9 +237,21 @@ static __device__ void thread_num_to_state_index_q2(uint64_t thread_num, uint64_
     is_measured_bits = args->is_measured_bits;
     measured_value_bits = args->measured_value_bits;
 
-} /* thread_num_to_state_index */
+} /* thread_num_to_state_index_q2 */
 
 namespace gate {
+
+    struct phase {
+        static constexpr unsigned int num_target_qubits = 0;
+        qcs::complex_t exp_i_theta;
+        phase(double theta) {
+            exp_i_theta.real(cos(theta));
+            exp_i_theta.imag(sin(theta));
+        }
+        __device__ void apply(qcs::complex_t const s_in, qcs::complex_t& s_out) const {
+            s_out = exp_i_theta * s_in;
+        }
+    };
 
     struct hadamard {
         static constexpr unsigned int num_target_qubits = 1;
@@ -263,6 +303,19 @@ __global__ void clear_alternative_state(int target_qubit_num, int measured_value
 
     qcs::kernel_common_constant.state_data_device[index_state] = 0.0;
 
+}
+
+template<typename GateType>
+__global__
+typename std::enable_if<GateType::num_target_qubits==0>::type
+cuda_gate(GateType const gateobj) {
+    int64_t const thread_num = (uint64_t)threadIdx.x + (uint64_t)blockIdx.x * (uint64_t)blockDim.x;
+
+    uint64_t index_state;
+    thread_num_to_state_index_q0(thread_num, index_state);
+
+    qcs::complex_t const s_in = qcs::kernel_common_constant.state_data_device[index_state];
+    gateobj.apply(s_in, qcs::kernel_common_constant.state_data_device[index_state]);
 }
 
 template<typename GateType>
@@ -1480,6 +1533,15 @@ void simulator::set_entangled_state() {
 void simulator::set_random_state() {
     ensure_qubits_allocated();
     core->initialize_use_curand();
+}
+
+void simulator::phase(double theta, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::phase(theta), {}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::phase_pow(double exponent, double theta, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    this->phase(exponent * theta, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
 }
 
 void simulator::swap(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
