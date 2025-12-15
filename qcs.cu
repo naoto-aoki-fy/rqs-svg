@@ -69,6 +69,8 @@ struct kernel_common_struct {
     qcs::complex_t* state_data_device;
 };
 
+__constant__ qcs::complex_t zero_constant;
+
 __constant__ qcs::kernel_common_struct kernel_common_constant;
 
 __constant__ unsigned char kernel_input_constant[qcs::kernel_input_max_size];
@@ -248,14 +250,14 @@ namespace gate {
             exp_i_theta.real(cos(theta));
             exp_i_theta.imag(sin(theta));
         }
-        __device__ void apply(qcs::complex_t const s_in, qcs::complex_t& s_out) const {
+        __device__ void apply(qcs::complex_t const& s_in, qcs::complex_t& s_out) const {
             s_out = exp_i_theta * s_in;
         }
     };
 
     struct hadamard {
         static constexpr unsigned int num_target_qubits = 1;
-        __device__ void apply(qcs::complex_t const s0_in, qcs::complex_t const s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
             s0_out = s0_in + s1_in;
             s1_out = s0_in - s1_in;
         }
@@ -269,7 +271,7 @@ namespace gate {
 
     struct x {
         static constexpr unsigned int num_target_qubits = 1;
-        __device__ void apply(qcs::complex_t const s0_in, qcs::complex_t const s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
             s0_out = s1_in;
             s1_out = s0_in;
         }
@@ -277,7 +279,7 @@ namespace gate {
 
     struct swap {
         static constexpr unsigned int num_target_qubits = 2;
-        __device__ void apply(qcs::complex_t const s00_in, qcs::complex_t const s01_in, qcs::complex_t const s10_in, qcs::complex_t const s11_in, qcs::complex_t& s00_out, qcs::complex_t& s01_out, qcs::complex_t& s10_out, qcs::complex_t& s11_out) const {
+        __device__ void apply(qcs::complex_t const& s00_in, qcs::complex_t const& s01_in, qcs::complex_t const& s10_in, qcs::complex_t const& s11_in, qcs::complex_t& s00_out, qcs::complex_t& s01_out, qcs::complex_t& s10_out, qcs::complex_t& s11_out) const {
             // s00_out = s00_in;
             s01_out = s10_in;
             s10_out = s01_in;
@@ -314,8 +316,8 @@ cuda_gate(GateType const gateobj) {
     uint64_t index_state;
     thread_num_to_state_index_q0(thread_num, index_state);
 
-    qcs::complex_t const s_in = qcs::kernel_common_constant.state_data_device[index_state];
-    gateobj.apply(s_in, qcs::kernel_common_constant.state_data_device[index_state]);
+    qcs::complex_t const* ps_in = &qcs::kernel_common_constant.state_data_device[index_state];
+    gateobj.apply(*ps_in, qcs::kernel_common_constant.state_data_device[index_state]);
 }
 
 template<typename GateType>
@@ -328,25 +330,26 @@ cuda_gate(GateType const gateobj) {
     int is_measured_bits, measured_value_bits;
     thread_num_to_state_index_q1(thread_num, index_state_0, index_state_1, is_measured_bits, measured_value_bits);
 
-    qcs::complex_t s0_in, s1_in;
+    qcs::complex_t const* ps0_in;
+    qcs::complex_t const* ps1_in;
 
     if (
         (!(is_measured_bits) || ((is_measured_bits) && (measured_value_bits)==0))
     ) {
-        s0_in = qcs::kernel_common_constant.state_data_device[index_state_0];
+        ps0_in = &qcs::kernel_common_constant.state_data_device[index_state_0];
     } else {
-        s0_in = 0;
+        ps0_in = &zero_constant;
     }
 
     if (
         (!(is_measured_bits) || ((is_measured_bits) && (measured_value_bits)==1))
     ) {
-        s1_in = qcs::kernel_common_constant.state_data_device[index_state_1];
+        ps1_in = &qcs::kernel_common_constant.state_data_device[index_state_1];
     } else {
-        s1_in = 0;
+        ps1_in = &zero_constant;
     }
 
-    gateobj.apply(s0_in, s1_in, qcs::kernel_common_constant.state_data_device[index_state_0], qcs::kernel_common_constant.state_data_device[index_state_1]);
+    gateobj.apply(*ps0_in, *ps1_in, qcs::kernel_common_constant.state_data_device[index_state_0], qcs::kernel_common_constant.state_data_device[index_state_1]);
 }
 
 template<typename GateType>
@@ -359,45 +362,49 @@ cuda_gate(GateType const gateobj) {
     int is_measured_bits, measured_value_bits;
     thread_num_to_state_index_q2(thread_num, index_state_00, index_state_01, index_state_10, index_state_11, is_measured_bits, measured_value_bits);
 
-    qcs::complex_t s00_in, s01_in, s10_in, s11_in;
+    // qcs::complex_t s00_in, s01_in, s10_in, s11_in;
+    qcs::complex_t const* ps00_in;
+    qcs::complex_t const* ps01_in;
+    qcs::complex_t const* ps10_in;
+    qcs::complex_t const* ps11_in;
 
     if (
         (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==0)) &&
         (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==0))
     ) {
-        s00_in = qcs::kernel_common_constant.state_data_device[index_state_00];
+        ps00_in = &qcs::kernel_common_constant.state_data_device[index_state_00];
     } else {
-        s00_in = 0;
+        ps00_in = &zero_constant;
     }
 
     if (
         (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==0)) &&
         (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==1))
     ) {
-        s01_in = qcs::kernel_common_constant.state_data_device[index_state_01];
+        ps01_in = &qcs::kernel_common_constant.state_data_device[index_state_01];
     } else {
-        s01_in = 0;
+        ps01_in = &zero_constant;
     }
 
     if (
         (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==1)) &&
         (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==0))
     ) {
-        s10_in = qcs::kernel_common_constant.state_data_device[index_state_10];
+        ps10_in = &qcs::kernel_common_constant.state_data_device[index_state_10];
     } else {
-        s10_in = 0;
+        ps10_in = &zero_constant;
     }
 
     if (
         (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==1)) &&
         (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==1))
     ) {
-        s11_in = qcs::kernel_common_constant.state_data_device[index_state_11];
+        ps11_in = &qcs::kernel_common_constant.state_data_device[index_state_11];
     } else {
-        s11_in = 0;
+        ps11_in = &zero_constant;
     }
 
-    gateobj.apply(s00_in, s01_in, s10_in, s11_in, qcs::kernel_common_constant.state_data_device[index_state_00], qcs::kernel_common_constant.state_data_device[index_state_01], qcs::kernel_common_constant.state_data_device[index_state_10], qcs::kernel_common_constant.state_data_device[index_state_11]);
+    gateobj.apply(*ps00_in, *ps01_in, *ps10_in, *ps11_in, qcs::kernel_common_constant.state_data_device[index_state_00], qcs::kernel_common_constant.state_data_device[index_state_01], qcs::kernel_common_constant.state_data_device[index_state_10], qcs::kernel_common_constant.state_data_device[index_state_11]);
 }
 
 namespace cubUtility {
@@ -496,6 +503,7 @@ uint64_t num_operand_qubits;
 
 qcs::complex_t* state_data_device;
 
+qcs::complex_t* zero_constant_addr;
 qcs::kernel_common_struct* qcs_kernel_common_constant_addr;
 qcs::kernel_common_struct qcs_kernel_common_host;
 qcs::kernel_input_qnlist_struct* qcs_kernel_input_constant_addr;
@@ -581,6 +589,11 @@ void setup() {
     ATLC_CHECK_CUDA(cudaGetSymbolAddress, (void**)&qcs_kernel_common_constant_addr, qcs::kernel_common_constant);
 
     ATLC_CHECK_CUDA(cudaGetSymbolAddress, (void**)&qcs_kernel_input_constant_addr, qcs::kernel_input_constant);
+
+    ATLC_CHECK_CUDA(cudaGetSymbolAddress, (void**)&zero_constant_addr, qcs::zero_constant);
+
+    qcs::complex_t const complex_zero = 0;
+    ATLC_CHECK_CUDA(cudaMemcpyAsync, zero_constant_addr, &complex_zero, sizeof(qcs::complex_t), cudaMemcpyHostToDevice, stream);
 
     if (proc_num==0) {
         std::random_device rng;
