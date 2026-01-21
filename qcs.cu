@@ -49,6 +49,18 @@ typedef double float_t;
 typedef cuda::std::complex<qcs::float_t> complex_t;
 typedef cuda::std::array<qcs::float_t, 2> float2_t;
 
+complex_t multiply_i(complex_t input) {
+    return complex_t(- input.imag(), input.real());
+}
+
+complex_t multiply_i_m(complex_t input) {
+    return complex_t(input.imag(), - input.real());
+}
+
+complex_t multiply_i_real(complex_t input, float_t multiplier) {
+    return complex_t(multiplier * input.imag(), - multiplier * input.real());
+}
+
 constexpr uint64_t kernel_input_max_size = 256;
 
 __global__ void initstate_sequential_kernel(qcs::complex_t* const data_global, int proc_num)
@@ -243,10 +255,33 @@ static __device__ void thread_num_to_state_index_q2(uint64_t thread_num, uint64_
 
 namespace gate {
 
-    struct phase {
+    struct u4 {
+        static constexpr unsigned int num_target_qubits = 1;
+        qcs::float_t cos_theta_2;
+        qcs::float_t sin_theta_2;
+        qcs::complex_t exp_i_phi;
+        qcs::complex_t exp_i_lambda;
+        qcs::complex_t exp_i_gamma;
+        u4(double theta, double phi, double lambda, double gamma = 0.0) {
+            qcs::float_t const theta_2 = 0.5 * theta;
+            cos_theta_2 = cos(theta_2);
+            sin_theta_2 = sin(theta_2);
+            exp_i_phi = qcs::complex_t(cos(phi), sin(phi));
+            exp_i_lambda = qcs::complex_t(cos(lambda), sin(lambda));
+            exp_i_gamma = qcs::complex_t(cos(gamma), sin(gamma));
+        }
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+            qcs::complex_t const s0_in_copy = s0_in;
+            qcs::complex_t const s1_in_copy = s1_in;
+            s0_out = exp_i_gamma * (cos_theta_2 * s0_in_copy - sin_theta_2 * exp_i_lambda * s1_in_copy);
+            s1_out = exp_i_gamma * (exp_i_phi * (sin_theta_2 * s0_in_copy - exp_i_lambda * cos_theta_2 * s1_in_copy));
+        }
+    };
+
+    struct global_phase {
         static constexpr unsigned int num_target_qubits = 0;
         qcs::complex_t exp_i_theta;
-        phase(double theta) {
+        global_phase(double theta) {
             exp_i_theta.real(cos(theta));
             exp_i_theta.imag(sin(theta));
         }
@@ -258,8 +293,11 @@ namespace gate {
     struct hadamard {
         static constexpr unsigned int num_target_qubits = 1;
         __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
-            s0_out = s0_in + s1_in;
-            s1_out = s0_in - s1_in;
+            auto const s0_in_copy = s0_in;
+            auto const s1_in_copy = s1_in;
+            // break unitarity intentionally: a hack to prevent amplitude attenuation
+            s0_out = s0_in_copy + s1_in_copy;
+            s1_out = s0_in_copy - s1_in_copy;
         }
     };
 
@@ -272,17 +310,152 @@ namespace gate {
     struct x {
         static constexpr unsigned int num_target_qubits = 1;
         __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
-            s0_out = s1_in;
-            s1_out = s0_in;
+            auto const s0_in_copy = s0_in;
+            auto const s1_in_copy = s1_in;
+            s0_out = s1_in_copy;
+            s1_out = s0_in_copy;
+        }
+    };
+
+    struct y {
+        static constexpr unsigned int num_target_qubits = 1;
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+            auto const s0_in_copy = s0_in;
+            auto const s1_in_copy = s1_in;
+            s0_out.real(s1_in_copy.imag());
+            s0_out.imag(- s1_in_copy.real());
+            s1_out.real(- s1_in_copy.imag());
+            s1_out.imag(s1_in_copy.real());
+        }
+    };
+
+    struct z {
+        static constexpr unsigned int num_target_qubits = 1;
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+            auto const s0_in_copy = s0_in;
+            auto const s1_in_copy = s1_in;
+            s0_out = - s0_in_copy;
+            s1_in = - s1_in_copy;
+        }
+    };
+
+    struct s {
+        static constexpr unsigned int num_target_qubits = 1;
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+            auto const s1_in_copy = s1_in;
+            s1_out.real(- s1_in_copy.imag());
+            s1_out.imag(s1_in_copy.real());
+        }
+    };
+
+    struct sdg {
+        static constexpr unsigned int num_target_qubits = 1;
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+            auto const s1_in_copy = s1_in;
+            s1_out.real(s1_in_copy.imag());
+            s1_out.imag(- s1_in_copy.real());
+        }
+    };
+
+    struct t {
+        static constexpr unsigned int num_target_qubits = 1;
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+            s1_out = qcs:complex_t(M_SQRT1_2, M_SQRT1_2) * s1_in;
+        }
+    };
+
+    struct t {
+        static constexpr unsigned int num_target_qubits = 1;
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+            s1_out = qcs:complex_t(M_SQRT1_2, - M_SQRT1_2) * s1_in;
+        }
+    };
+
+    struct sx {
+        static constexpr unsigned int num_target_qubits = 1;
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+            auto const s0_in_copy = s0_in;
+            auto const s1_in_copy = s1_in;
+            // break unitarity intentionally: a hack to prevent amplitude attenuation
+            // s0_out = qcs::complex_t(M_SQRT1_2, M_SQRT1_2) * s0_in_copy + qcs::complex_t(M_SQRT1_2, - M_SQRT1_2) * s1_in_copy;
+            // s1_out = qcs::complex_t(M_SQRT1_2, - M_SQRT1_2) * s0_in_copy - qcs::complex_t(M_SQRT1_2, M_SQRT1_2) * s1_in_copy;
+
+            // break unitarity intentionally: a hack to prevent amplitude attenuation
+            auto const a = M_SQRT1_2 * (s0_in + s1_in);
+            auto const b = M_SQRT1_2 * multiply_i(s0_in - s1_in);
+            s0_out = a + b;
+            s1_out = a - b;
+        }
+    };
+
+    struct rx {
+        static constexpr unsigned int num_target_qubits = 1;
+        qcs::float_t cos_theta_2;
+        qcs::float_t sin_theta_2;
+        rx(double theta) {
+            cos_theta_2 = cos(0.5 * theta);
+            cos_theta_2 = sin(0.5 * theta);
+        }
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+            auto const s0_in_copy = s0_in;
+            auto const s1_in_copy = s1_in;
+            s0_out = cos_theta_2 * s0_in_copy + multiply_i_real(s1_in_copy, - sin_theta_2);
+            s1_out = multiply_i_real(s0_in_copy, - sin_theta_2) + cos_theta_2 * s1_in_copy;
+        }
+    };
+
+    struct rx {
+        static constexpr unsigned int num_target_qubits = 1;
+        qcs::float_t cos_theta_2;
+        qcs::float_t sin_theta_2;
+        rx(double theta) {
+            cos_theta_2 = cos(0.5 * theta);
+            cos_theta_2 = sin(0.5 * theta);
+        }
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+            auto const s0_in_copy = s0_in;
+            auto const s1_in_copy = s1_in;
+            s0_out = cos_theta_2 * s0_in_copy - sin_theta_2 * s1_in_copy;
+            s1_out = sin_theta_2 * s0_in_copy + cos_theta_2 * s1_in_copy;
+        }
+    };
+
+    struct rz {
+        static constexpr unsigned int num_target_qubits = 1;
+        qcs::float_t cos_theta_2;
+        qcs::float_t sin_theta_2;
+        rx(double theta) {
+            cos_theta_2 = cos(0.5 * theta);
+            cos_theta_2 = sin(0.5 * theta);
+        }
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+            s0_out = qcs::complex_t(cos_theta_2, - sin_theta_2) * s0_in;
+            s1_out = qcs::complex_t(cos_theta_2, sin_theta_2) * s1_in;
         }
     };
 
     struct swap {
         static constexpr unsigned int num_target_qubits = 2;
         __device__ void apply(qcs::complex_t const& s00_in, qcs::complex_t const& s01_in, qcs::complex_t const& s10_in, qcs::complex_t const& s11_in, qcs::complex_t& s00_out, qcs::complex_t& s01_out, qcs::complex_t& s10_out, qcs::complex_t& s11_out) const {
+            auto const s01_in_copy = s01_in;
+            auto const s10_in_copy = s10_in;
             // s00_out = s00_in;
-            s01_out = s10_in;
-            s10_out = s01_in;
+            s01_out = s10_in_copy;
+            s10_out = s01_in_copy;
+            // s11_out = s11_in;
+        }
+    };
+
+    struct iswap {
+        static constexpr unsigned int num_target_qubits = 2;
+        __device__ void apply(qcs::complex_t const& s00_in, qcs::complex_t const& s01_in, qcs::complex_t const& s10_in, qcs::complex_t const& s11_in, qcs::complex_t& s00_out, qcs::complex_t& s01_out, qcs::complex_t& s10_out, qcs::complex_t& s11_out) const {
+            auto const s01_in_copy = s01_in;
+            auto const s10_in_copy = s10_in;
+            // s00_out = s00_in;
+            s01_out.real(- s10_in_copy.imag());
+            s01_out.imag(s10_in_copy.real());
+            s10_out.real(- s01_in_copy.imag());
+            s10_out.imag(s01_in_copy.real());
             // s11_out = s11_in;
         }
     };
@@ -1548,13 +1721,13 @@ void simulator::set_random_state() {
     core->initialize_use_curand();
 }
 
-void simulator::phase(double theta, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::global_phase(double theta, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::phase(theta), {}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::global_phase(theta), {}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
 }
 
-void simulator::phase_pow(double exponent, double theta, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
-    this->phase(exponent * theta, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+void simulator::global_phase_pow(double exponent, double theta, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    this->global_phase(exponent * theta, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
 }
 
 void simulator::swap(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
