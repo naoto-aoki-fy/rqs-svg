@@ -364,7 +364,7 @@ namespace gate {
         }
     };
 
-    struct t {
+    struct tdg {
         static constexpr unsigned int num_target_qubits = 1;
         __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
             s1_out = qcs:complex_t(M_SQRT1_2, - M_SQRT1_2) * s1_in;
@@ -374,9 +374,9 @@ namespace gate {
     struct sx {
         static constexpr unsigned int num_target_qubits = 1;
         __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
-            auto const s0_in_copy = s0_in;
-            auto const s1_in_copy = s1_in;
             // break unitarity intentionally: a hack to prevent amplitude attenuation
+            // auto const s0_in_copy = s0_in;
+            // auto const s1_in_copy = s1_in;
             // s0_out = qcs::complex_t(M_SQRT1_2, M_SQRT1_2) * s0_in_copy + qcs::complex_t(M_SQRT1_2, - M_SQRT1_2) * s1_in_copy;
             // s1_out = qcs::complex_t(M_SQRT1_2, - M_SQRT1_2) * s0_in_copy - qcs::complex_t(M_SQRT1_2, M_SQRT1_2) * s1_in_copy;
 
@@ -404,11 +404,11 @@ namespace gate {
         }
     };
 
-    struct rx {
+    struct ry {
         static constexpr unsigned int num_target_qubits = 1;
         qcs::float_t cos_theta_2;
         qcs::float_t sin_theta_2;
-        rx(double theta) {
+        ry(double theta) {
             cos_theta_2 = cos(0.5 * theta);
             cos_theta_2 = sin(0.5 * theta);
         }
@@ -424,7 +424,7 @@ namespace gate {
         static constexpr unsigned int num_target_qubits = 1;
         qcs::float_t cos_theta_2;
         qcs::float_t sin_theta_2;
-        rx(double theta) {
+        rz(double theta) {
             cos_theta_2 = cos(0.5 * theta);
             cos_theta_2 = sin(0.5 * theta);
         }
@@ -1739,6 +1739,15 @@ void simulator::swap_pow(double exponent, std::vector<int>&& target_qubit_num_li
     throw std::runtime_error("not implemented");
 }
 
+void simulator::iswap(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::iswap(), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::iswap_pow(double exponent, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
 void simulator::hadamard(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
     ensure_qubits_allocated();
     core->operate_gate(gate::hadamard(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
@@ -1757,9 +1766,107 @@ void simulator::gate_x_pow(double exponent, int target_qubit_num, std::vector<in
     throw std::runtime_error("not implemented");
 }
 
-void simulator::gate_u4(double theta, double phi, double lambda, double gamma, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list)  { throw std::runtime_error("not implemented"); }
+void simulator::gate_y(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::y(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
 
-void simulator::gate_u4_pow(double theta, double phi, double lambda, double gamma, double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list)  { throw std::runtime_error("not implemented"); }
+void simulator::gate_y_pow(double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
+void simulator::gate_z(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::z(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_z_pow(double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
+void simulator::gate_s(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::s(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_s_pow(double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
+void simulator::gate_sdg(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::sdg(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_sdg_pow(double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
+void simulator::gate_t(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::t(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_t_pow(double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
+void simulator::gate_tdg(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::tdg(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_tdg_pow(double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
+void simulator::gate_sx(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::sx(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_sx_pow(double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
+void simulator::gate_rx(double theta, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::rx(theta), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_rx_pow(double theta, double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::rx(theta * exponent), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_ry(double theta, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::ry(theta), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_ry_pow(double theta, double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::ry(theta * exponent), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_rz(double theta, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::rz(theta), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_rz_pow(double theta, double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::rz(theta * exponent), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_u4(double theta, double phi, double lambda, double gamma, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::u4(theta, phi, lambda, gamma), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_u4_pow(double theta, double phi, double lambda, double gamma, double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
 
 } /* qcs */
 
