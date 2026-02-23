@@ -49,15 +49,15 @@ typedef double float_t;
 typedef cuda::std::complex<qcs::float_t> complex_t;
 typedef cuda::std::array<qcs::float_t, 2> float2_t;
 
-complex_t multiply_i(complex_t input) {
+__device__ __host__ complex_t multiply_i(complex_t input) {
     return complex_t(- input.imag(), input.real());
 }
 
-complex_t multiply_i_m(complex_t input) {
+__device__ __host__ complex_t multiply_i_m(complex_t input) {
     return complex_t(input.imag(), - input.real());
 }
 
-complex_t multiply_i_real(complex_t input, float_t multiplier) {
+__device__ __host__ complex_t multiply_i_real(complex_t input, float_t multiplier) {
     return complex_t(multiplier * input.imag(), - multiplier * input.real());
 }
 
@@ -324,8 +324,8 @@ namespace gate {
             auto const s1_in_copy = s1_in;
             s0_out.real(s1_in_copy.imag());
             s0_out.imag(- s1_in_copy.real());
-            s1_out.real(- s1_in_copy.imag());
-            s1_out.imag(s1_in_copy.real());
+            s1_out.real(- s0_in_copy.imag());
+            s1_out.imag(s0_in_copy.real());
         }
     };
 
@@ -335,7 +335,7 @@ namespace gate {
             auto const s0_in_copy = s0_in;
             auto const s1_in_copy = s1_in;
             s0_out = - s0_in_copy;
-            s1_in = - s1_in_copy;
+            s1_out = - s1_in_copy;
         }
     };
 
@@ -360,14 +360,14 @@ namespace gate {
     struct t {
         static constexpr unsigned int num_target_qubits = 1;
         __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
-            s1_out = qcs:complex_t(M_SQRT1_2, M_SQRT1_2) * s1_in;
+            s1_out = qcs::complex_t(M_SQRT1_2, M_SQRT1_2) * s1_in;
         }
     };
 
     struct tdg {
         static constexpr unsigned int num_target_qubits = 1;
         __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
-            s1_out = qcs:complex_t(M_SQRT1_2, - M_SQRT1_2) * s1_in;
+            s1_out = qcs::complex_t(M_SQRT1_2, - M_SQRT1_2) * s1_in;
         }
     };
 
