@@ -2503,13 +2503,29 @@ int simulator::get_num_procs() {
     return core->num_procs;
 }
 
-void simulator::promise_qubits(int num_qubits) {
-    this->num_qubits += num_qubits;
+void simulator::set_num_qubits(int num_qubits) {
+    this->num_qubits = num_qubits;
+}
+
+void simulator::set_num_clbits(int num_clbits) {
+    this->num_clbits = num_clbits;
+    this->clbits.resize(num_clbits);
 }
 
 int simulator::measure(int qubit_num) {
     ensure_qubits_allocated();
-    return core->measure_qubit(qubit_num);
+    int const result = core->measure_qubit(qubit_num);
+    return result;
+}
+
+int simulator::measure(int qubit_num, int clbit_num) {
+    int const result = measure(qubit_num);
+    clbits[clbit_num] = result;
+    return result;
+}
+
+int simulator::read(int clbit_num) {
+    return clbits[clbit_num];
 }
 
 void simulator::ensure_qubits_allocated() {
@@ -2733,7 +2749,7 @@ void ghz_sample() {
     ATLC_DEFER_FUNC(sim.dispose);
 
     constexpr unsigned int num_qubits = 14;
-    sim.promise_qubits(num_qubits);
+    sim.set_num_qubits(num_qubits);
 
     uint64_t const num_samples = UINT64_C(1) << num_qubits;
 
@@ -2771,7 +2787,7 @@ void measurement_sample() {
     ATLC_DEFER_FUNC(sim.dispose);
 
     constexpr unsigned int num_qubits = 14;
-    sim.promise_qubits(num_qubits);
+    sim.set_num_qubits(num_qubits);
 
     uint64_t const num_samples = UINT64_C(1) << num_qubits;
 

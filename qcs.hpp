@@ -9,7 +9,9 @@ namespace qcs {
     private:
         simulator_core* core;
         int num_qubits;
+        int num_clbits;
         void ensure_qubits_allocated();
+        std::vector<int> clbits;
     public:
         simulator();
         void setup();
@@ -18,7 +20,8 @@ namespace qcs {
         int get_num_procs();
         int get_proc_num();
 
-        void promise_qubits(int num_qubits);
+        void set_num_qubits(int num_qubits);
+        void set_num_clbits(int num_clbits);
 
         void reset(int qubit_num);
         void set_zero_state();
@@ -86,5 +89,7 @@ namespace qcs {
         void gate_rcccx(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
         int measure(int qubit_num);
+        int measure(int qubit_num, int clbit_num);
+        int read(int clbit_num);
     };
 }
