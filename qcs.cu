@@ -2312,7 +2312,7 @@ int measure_qubit(int const measure_qubit_num_logical) {
 }
 
 template<typename GateType>
-void operate_gate(GateType gateobj, std::vector<int>&& target_qubit_num_logical_list_input, std::vector<int>&& negative_control_qubit_num_logical_list_input, std::vector<int>&& positive_control_qubit_num_logical_list_input) {
+void operate_gate(GateType gateobj, std::vector<int> target_qubit_num_logical_list_input, std::vector<int> negative_control_qubit_num_logical_list_input, std::vector<int> positive_control_qubit_num_logical_list_input) {
 
     assert(target_qubit_num_logical_list_input.size() == GateType::num_target_qubits);
 
@@ -2521,7 +2521,7 @@ void simulator::ensure_qubits_allocated() {
 void simulator::reset(int qubit_num) {
     int measured_value = measure(qubit_num);
     if (measured_value) {
-        gate_x(qubit_num, {}, {});
+        gate_x({qubit_num}, {}, {});
     }
 }
 
@@ -2550,177 +2550,177 @@ void simulator::set_random_state() {
     core->initialize_use_curand();
 }
 
-void simulator::gate_global_phase(double theta, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_global_phase(double theta, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::global_phase(theta), {}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::global_phase(theta), {}, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_swap(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_swap(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::swap(), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::swap(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_iswap(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_iswap(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::iswap(), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::iswap(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_h(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_h(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::hadamard(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::hadamard(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_x(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_x(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::x(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::x(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_y(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_y(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::y(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::y(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_z(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_z(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::z(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::z(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_s(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_s(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::s(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::s(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_sdg(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_sdg(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::sdg(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::sdg(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_t(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_t(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::t(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::t(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_tdg(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_tdg(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::tdg(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::tdg(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_sx(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_sx(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::sx(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::sx(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_sxdg(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_sxdg(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::sxdg(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::sxdg(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_rx(double theta, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_rx(double theta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::rx(theta), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::rx(theta), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_ry(double theta, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_ry(double theta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::ry(theta), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::ry(theta), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_rz(double theta, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_rz(double theta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::rz(theta), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::rz(theta), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_u4(double theta, double phi, double lambda, double gamma, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_u4(double theta, double phi, double lambda, double gamma, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::u4(theta, phi, lambda, gamma), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::u4(theta, phi, lambda, gamma), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_id(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_id(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::id(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::id(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_r(double theta, double phi, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_r(double theta, double phi, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::r(theta, phi), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::r(theta, phi), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_rzz(double theta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_rzz(double theta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::rzz(theta), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::rzz(theta), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_rxx(double theta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_rxx(double theta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::rxx(theta), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::rxx(theta), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_ryy(double theta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_ryy(double theta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::ryy(theta), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::ryy(theta), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_rzx(double theta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_rzx(double theta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::rzx(theta), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::rzx(theta), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_dcx(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_dcx(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::dcx(), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::dcx(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_ecr(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_ecr(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::ecr(), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::ecr(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_xx_plus_yy(double theta, double beta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_xx_plus_yy(double theta, double beta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::xx_plus_yy(theta, beta), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::xx_plus_yy(theta, beta), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_xx_minus_yy(double theta, double beta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_xx_minus_yy(double theta, double beta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::xx_minus_yy(theta, beta), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::xx_minus_yy(theta, beta), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_rccx(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_rccx(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::rccx(), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::rccx(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
-void simulator::gate_rcccx(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+void simulator::gate_rcccx(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
-    core->operate_gate(gate::rcccx(), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+    core->operate_gate(gate::rcccx(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
@@ -2740,14 +2740,14 @@ void ghz_sample() {
     uint64_t measured_bit = 0;
     for(int sample_num = 0; sample_num < num_samples; ++sample_num) {
 
-        sim.gate_h(0, {}, {});
+        sim.gate_h({0}, {}, {});
 
         for(int qubit_num = 1; qubit_num < num_qubits; qubit_num++)
         {
             if ((measured_bit>>qubit_num)&1) {
-                sim.gate_x(qubit_num, {0}, {});
+                sim.gate_x({qubit_num}, {0}, {});
             } else {
-                sim.gate_x(qubit_num, {}, {0});
+                sim.gate_x({qubit_num}, {}, {0});
             }
         }
 

@@ -27,63 +27,63 @@ namespace qcs {
         void set_entangled_state();
         void set_random_state();
 
-        void gate_global_phase(double theta, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_global_phase(double theta, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_h(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_h(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_x(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_x(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_y(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_y(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_z(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_z(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_s(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_s(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_sdg(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_sdg(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_t(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_t(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_tdg(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_tdg(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_sx(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_sx(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_rx(double theta, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_rx(double theta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_ry(double theta, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_ry(double theta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_rz(double theta, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_rz(double theta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_u4(double theta, double phi, double lambda, double gamma, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_u4(double theta, double phi, double lambda, double gamma, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_swap(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_swap(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_iswap(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_iswap(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_id(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_id(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_sxdg(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_sxdg(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_r(double theta, double phi, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_r(double theta, double phi, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_rxx(double theta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_rxx(double theta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_ryy(double theta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_ryy(double theta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_rzz(double theta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_rzz(double theta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_rzx(double theta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_rzx(double theta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_dcx(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_dcx(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_ecr(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_ecr(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_xx_plus_yy(double theta, double beta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_xx_plus_yy(double theta, double beta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_xx_minus_yy(double theta, double beta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_xx_minus_yy(double theta, double beta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_rccx(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_rccx(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
-        void gate_rcccx(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list);
+        void gate_rcccx(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
         int measure(int qubit_num);
     };
