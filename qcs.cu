@@ -253,6 +253,114 @@ static __device__ void thread_num_to_state_index_q2(uint64_t thread_num, uint64_
 
 } /* thread_num_to_state_index_q2 */
 
+static __device__ void thread_num_to_state_index_q3(
+    uint64_t thread_num,
+    uint64_t& index_state_000, uint64_t& index_state_001, uint64_t& index_state_010, uint64_t& index_state_011,
+    uint64_t& index_state_100, uint64_t& index_state_101, uint64_t& index_state_110, uint64_t& index_state_111,
+    int& is_measured_bits, int& measured_value_bits
+) {
+    auto args = (qcs::kernel_input_qnlist_struct const*)(void*)qcs::kernel_input_constant;
+
+    index_state_000 = 0;
+
+    int const num_operand_qubits = args->get_num_operand_qubits();
+    int const* const qubit_num_list_sorted = args->get_operand_qubit_num_list_sorted();
+
+    // generate index_state_000
+    // ignoring positive control qubits
+    uint64_t lower_mask = 0;
+    for(int i = 0; i < num_operand_qubits; i++) {
+        uint64_t const mask = (UINT64_C(1) << (qubit_num_list_sorted[i] - i)) - 1;
+        uint64_t const upper_mask = mask & ~lower_mask;
+        lower_mask = mask;
+        index_state_000 |= (thread_num & upper_mask) << i;
+    }
+    index_state_000 |= (thread_num & ~lower_mask) << num_operand_qubits;
+
+    // update index_state_000
+    // considering positive control qubits
+    int const* const positive_control_qubit_num_list = args->get_positive_control_qubit_num_list();
+    for(int i = 0; i < args->num_positive_control_qubits; i++) {
+        index_state_000 |= UINT64_C(1) << positive_control_qubit_num_list[i];
+    }
+
+    // generate other indices
+    auto target_qubit_num_list = args->get_target_qubit_num_list();
+
+    index_state_001 = index_state_000 | (UINT64_C(1) << target_qubit_num_list[0]);
+    index_state_010 = index_state_000 | (UINT64_C(1) << target_qubit_num_list[1]);
+    index_state_011 = index_state_000 | (UINT64_C(1) << target_qubit_num_list[0]) | (UINT64_C(1) << target_qubit_num_list[1]);
+
+    index_state_100 = index_state_000 | (UINT64_C(1) << target_qubit_num_list[2]);
+    index_state_101 = index_state_000 | (UINT64_C(1) << target_qubit_num_list[2]) | (UINT64_C(1) << target_qubit_num_list[0]);
+    index_state_110 = index_state_000 | (UINT64_C(1) << target_qubit_num_list[2]) | (UINT64_C(1) << target_qubit_num_list[1]);
+    index_state_111 = index_state_000 | (UINT64_C(1) << target_qubit_num_list[2]) | (UINT64_C(1) << target_qubit_num_list[1]) | (UINT64_C(1) << target_qubit_num_list[0]);
+
+    is_measured_bits = args->is_measured_bits;
+    measured_value_bits = args->measured_value_bits;
+
+} /* thread_num_to_state_index_q3 */
+
+static __device__ void thread_num_to_state_index_q4(
+    uint64_t thread_num,
+    uint64_t& index_state_0000, uint64_t& index_state_0001, uint64_t& index_state_0010, uint64_t& index_state_0011,
+    uint64_t& index_state_0100, uint64_t& index_state_0101, uint64_t& index_state_0110, uint64_t& index_state_0111,
+    uint64_t& index_state_1000, uint64_t& index_state_1001, uint64_t& index_state_1010, uint64_t& index_state_1011,
+    uint64_t& index_state_1100, uint64_t& index_state_1101, uint64_t& index_state_1110, uint64_t& index_state_1111,
+    int& is_measured_bits, int& measured_value_bits
+) {
+    auto args = (qcs::kernel_input_qnlist_struct const*)(void*)qcs::kernel_input_constant;
+
+    index_state_0000 = 0;
+
+    int const num_operand_qubits = args->get_num_operand_qubits();
+    int const* const qubit_num_list_sorted = args->get_operand_qubit_num_list_sorted();
+
+    // generate index_state_0000
+    // ignoring positive control qubits
+    uint64_t lower_mask = 0;
+    for(int i = 0; i < num_operand_qubits; i++) {
+        uint64_t const mask = (UINT64_C(1) << (qubit_num_list_sorted[i] - i)) - 1;
+        uint64_t const upper_mask = mask & ~lower_mask;
+        lower_mask = mask;
+        index_state_0000 |= (thread_num & upper_mask) << i;
+    }
+    index_state_0000 |= (thread_num & ~lower_mask) << num_operand_qubits;
+
+    // update index_state_0000
+    // considering positive control qubits
+    int const* const positive_control_qubit_num_list = args->get_positive_control_qubit_num_list();
+    for(int i = 0; i < args->num_positive_control_qubits; i++) {
+        index_state_0000 |= UINT64_C(1) << positive_control_qubit_num_list[i];
+    }
+
+    // generate other indices
+    auto target_qubit_num_list = args->get_target_qubit_num_list();
+
+    index_state_0001 = index_state_0000 | (UINT64_C(1) << target_qubit_num_list[0]);
+    index_state_0010 = index_state_0000 | (UINT64_C(1) << target_qubit_num_list[1]);
+    index_state_0011 = index_state_0000 | (UINT64_C(1) << target_qubit_num_list[1]) | (UINT64_C(1) << target_qubit_num_list[0]);
+
+    index_state_0100 = index_state_0000 | (UINT64_C(1) << target_qubit_num_list[2]);
+    index_state_0101 = index_state_0000 | (UINT64_C(1) << target_qubit_num_list[2]) | (UINT64_C(1) << target_qubit_num_list[0]);
+    index_state_0110 = index_state_0000 | (UINT64_C(1) << target_qubit_num_list[2]) | (UINT64_C(1) << target_qubit_num_list[1]);
+    index_state_0111 = index_state_0000 | (UINT64_C(1) << target_qubit_num_list[2]) | (UINT64_C(1) << target_qubit_num_list[1]) | (UINT64_C(1) << target_qubit_num_list[0]);
+
+    index_state_1000 = index_state_0000 | (UINT64_C(1) << target_qubit_num_list[3]);
+    index_state_1001 = index_state_0000 | (UINT64_C(1) << target_qubit_num_list[3]) | (UINT64_C(1) << target_qubit_num_list[0]);
+    index_state_1010 = index_state_0000 | (UINT64_C(1) << target_qubit_num_list[3]) | (UINT64_C(1) << target_qubit_num_list[1]);
+    index_state_1011 = index_state_0000 | (UINT64_C(1) << target_qubit_num_list[3]) | (UINT64_C(1) << target_qubit_num_list[1]) | (UINT64_C(1) << target_qubit_num_list[0]);
+
+    index_state_1100 = index_state_0000 | (UINT64_C(1) << target_qubit_num_list[3]) | (UINT64_C(1) << target_qubit_num_list[2]);
+    index_state_1101 = index_state_0000 | (UINT64_C(1) << target_qubit_num_list[3]) | (UINT64_C(1) << target_qubit_num_list[2]) | (UINT64_C(1) << target_qubit_num_list[0]);
+    index_state_1110 = index_state_0000 | (UINT64_C(1) << target_qubit_num_list[3]) | (UINT64_C(1) << target_qubit_num_list[2]) | (UINT64_C(1) << target_qubit_num_list[1]);
+    index_state_1111 = index_state_0000 | (UINT64_C(1) << target_qubit_num_list[3]) | (UINT64_C(1) << target_qubit_num_list[2]) | (UINT64_C(1) << target_qubit_num_list[1]) | (UINT64_C(1) << target_qubit_num_list[0]);
+
+    is_measured_bits = args->is_measured_bits;
+    measured_value_bits = args->measured_value_bits;
+
+} /* thread_num_to_state_index_q4 */
+
 namespace gate {
 
     struct u4 {
@@ -388,6 +496,21 @@ namespace gate {
         }
     };
 
+    struct sxdg {
+        static constexpr unsigned int num_target_qubits = 1;
+
+        __device__ void apply(qcs::complex_t const& s0_in,
+                            qcs::complex_t const& s1_in,
+                            qcs::complex_t& s0_out,
+                            qcs::complex_t& s1_out) const {
+            // break unitarity intentionally: a hack to prevent amplitude attenuation
+            auto const a = M_SQRT1_2 * (s0_in + s1_in);
+            auto const b = -M_SQRT1_2 * multiply_i(s0_in - s1_in);
+            s0_out = a + b;
+            s1_out = a - b;
+        }
+    };
+
     struct rx {
         static constexpr unsigned int num_target_qubits = 1;
         qcs::float_t cos_theta_2;
@@ -457,6 +580,356 @@ namespace gate {
             s10_out.real(- s01_in_copy.imag());
             s10_out.imag(s01_in_copy.real());
             // s11_out = s11_in;
+        }
+    };
+
+    struct id {
+        static constexpr unsigned int num_target_qubits = 1;
+
+        __device__ void apply(qcs::complex_t const& s0_in,
+                            qcs::complex_t const& s1_in,
+                            qcs::complex_t& s0_out,
+                            qcs::complex_t& s1_out) const {
+            // s0_out = s0_in;
+            // s1_out = s1_in;
+        }
+    };
+
+    struct r {
+        static constexpr unsigned int num_target_qubits = 1;
+
+        qcs::float_t cos_theta_2;
+        qcs::float_t sin_theta_2;
+        qcs::complex_t exp_i_phi;
+        qcs::complex_t exp_minus_i_phi;
+
+        r(double theta, double phi) {
+            qcs::float_t const theta_2 = 0.5 * theta;
+            cos_theta_2 = cos(theta_2);
+            sin_theta_2 = sin(theta_2);
+            exp_i_phi = qcs::complex_t(cos(phi), sin(phi));
+            exp_minus_i_phi = qcs::complex_t(cos(phi), -sin(phi));
+        }
+
+        __device__ void apply(qcs::complex_t const& s0_in,
+                            qcs::complex_t const& s1_in,
+                            qcs::complex_t& s0_out,
+                            qcs::complex_t& s1_out) const {
+            auto const s0_in_copy = s0_in;
+            auto const s1_in_copy = s1_in;
+            s0_out = cos_theta_2 * s0_in_copy + sin_theta_2 * multiply_i_real(exp_minus_i_phi * s1_in_copy, 1.0);
+            s1_out = multiply_i_m(exp_i_phi * s0_in_copy) * sin_theta_2 + cos_theta_2 * s1_in_copy;
+        }
+    };
+
+    struct rzz {
+        static constexpr unsigned int num_target_qubits = 2;
+
+        qcs::complex_t phase_minus;
+        qcs::complex_t phase_plus;
+
+        rzz(double theta) {
+            qcs::float_t const theta_2 = 0.5 * theta;
+            phase_minus = qcs::complex_t(cos(theta_2), -sin(theta_2));
+            phase_plus = qcs::complex_t(cos(theta_2),  sin(theta_2));
+        }
+
+        __device__ void apply(qcs::complex_t const& s00_in,
+                            qcs::complex_t const& s01_in,
+                            qcs::complex_t const& s10_in,
+                            qcs::complex_t const& s11_in,
+                            qcs::complex_t& s00_out,
+                            qcs::complex_t& s01_out,
+                            qcs::complex_t& s10_out,
+                            qcs::complex_t& s11_out) const {
+            s00_out = phase_minus * s00_in;
+            s01_out = phase_plus * s01_in;
+            s10_out = phase_plus * s10_in;
+            s11_out = phase_minus * s11_in;
+        }
+    };
+
+    struct rxx {
+        static constexpr unsigned int num_target_qubits = 2;
+
+        qcs::float_t cos_theta_2;
+        qcs::float_t sin_theta_2;
+
+        rxx(double theta) {
+            qcs::float_t const theta_2 = 0.5 * theta;
+            cos_theta_2 = cos(theta_2);
+            sin_theta_2 = sin(theta_2);
+        }
+
+        __device__ void apply(qcs::complex_t const& s00_in,
+                            qcs::complex_t const& s01_in,
+                            qcs::complex_t const& s10_in,
+                            qcs::complex_t const& s11_in,
+                            qcs::complex_t& s00_out,
+                            qcs::complex_t& s01_out,
+                            qcs::complex_t& s10_out,
+                            qcs::complex_t& s11_out) const {
+            auto const s00_in_copy = s00_in;
+            auto const s01_in_copy = s01_in;
+            auto const s10_in_copy = s10_in;
+            auto const s11_in_copy = s11_in;
+
+            s00_out = cos_theta_2 * s00_in_copy + multiply_i_real(s11_in_copy, sin_theta_2);
+            s01_out = cos_theta_2 * s01_in_copy + multiply_i_real(s10_in_copy, sin_theta_2);
+            s10_out = cos_theta_2 * s10_in_copy + multiply_i_real(s01_in_copy, sin_theta_2);
+            s11_out = cos_theta_2 * s11_in_copy + multiply_i_real(s00_in_copy, sin_theta_2);
+        }
+    };
+
+    struct ryy {
+        static constexpr unsigned int num_target_qubits = 2;
+
+        qcs::float_t cos_theta_2;
+        qcs::float_t sin_theta_2;
+
+        ryy(double theta) {
+            qcs::float_t const theta_2 = 0.5 * theta;
+            cos_theta_2 = cos(theta_2);
+            sin_theta_2 = sin(theta_2);
+        }
+
+        __device__ void apply(qcs::complex_t const& s00_in,
+                            qcs::complex_t const& s01_in,
+                            qcs::complex_t const& s10_in,
+                            qcs::complex_t const& s11_in,
+                            qcs::complex_t& s00_out,
+                            qcs::complex_t& s01_out,
+                            qcs::complex_t& s10_out,
+                            qcs::complex_t& s11_out) const {
+            auto const s00_in_copy = s00_in;
+            auto const s01_in_copy = s01_in;
+            auto const s10_in_copy = s10_in;
+            auto const s11_in_copy = s11_in;
+
+            s00_out = cos_theta_2 * s00_in_copy + multiply_i(s11_in_copy) * sin_theta_2;
+            s01_out = cos_theta_2 * s01_in_copy + multiply_i_real(s10_in_copy, sin_theta_2);
+            s10_out = cos_theta_2 * s10_in_copy + multiply_i_real(s01_in_copy, sin_theta_2);
+            s11_out = cos_theta_2 * s11_in_copy + multiply_i(s00_in_copy) * sin_theta_2;
+        }
+    };
+
+    struct rzx {
+        static constexpr unsigned int num_target_qubits = 2;
+
+        qcs::float_t cos_theta_2;
+        qcs::float_t sin_theta_2;
+
+        rzx(double theta) {
+            qcs::float_t const theta_2 = 0.5 * theta;
+            cos_theta_2 = cos(theta_2);
+            sin_theta_2 = sin(theta_2);
+        }
+
+        __device__ void apply(qcs::complex_t const& s00_in,
+                            qcs::complex_t const& s01_in,
+                            qcs::complex_t const& s10_in,
+                            qcs::complex_t const& s11_in,
+                            qcs::complex_t& s00_out,
+                            qcs::complex_t& s01_out,
+                            qcs::complex_t& s10_out,
+                            qcs::complex_t& s11_out) const {
+            auto const s00_in_copy = s00_in;
+            auto const s01_in_copy = s01_in;
+            auto const s10_in_copy = s10_in;
+            auto const s11_in_copy = s11_in;
+
+            s00_out = cos_theta_2 * s00_in_copy + multiply_i_real(s10_in_copy, sin_theta_2);
+            s01_out = cos_theta_2 * s01_in_copy + multiply_i(s11_in_copy) * sin_theta_2;
+            s10_out = cos_theta_2 * s10_in_copy + multiply_i_real(s00_in_copy, sin_theta_2);
+            s11_out = cos_theta_2 * s11_in_copy + multiply_i(s01_in_copy) * sin_theta_2;
+        }
+    };
+
+    struct xx_plus_yy {
+        static constexpr unsigned int num_target_qubits = 2;
+
+        qcs::float_t cos_theta_2;
+        qcs::float_t sin_theta_2;
+        qcs::complex_t exp_i_beta;
+        qcs::complex_t exp_minus_i_beta;
+
+        xx_plus_yy(double theta, double beta = 0.0) {
+            qcs::float_t const theta_2 = 0.5 * theta;
+            cos_theta_2 = cos(theta_2);
+            sin_theta_2 = sin(theta_2);
+            exp_i_beta = qcs::complex_t(cos(beta), sin(beta));
+            exp_minus_i_beta = qcs::complex_t(cos(beta), -sin(beta));
+        }
+
+        __device__ void apply(qcs::complex_t const& s00_in,
+                            qcs::complex_t const& s01_in,
+                            qcs::complex_t const& s10_in,
+                            qcs::complex_t const& s11_in,
+                            qcs::complex_t& s00_out,
+                            qcs::complex_t& s01_out,
+                            qcs::complex_t& s10_out,
+                            qcs::complex_t& s11_out) const {
+            auto const s01_in_copy = s01_in;
+            auto const s10_in_copy = s10_in;
+
+            // s00_out = s00_in;
+            s01_out = cos_theta_2 * s01_in_copy + multiply_i_real(exp_i_beta * s10_in_copy, sin_theta_2);
+            s10_out = multiply_i_m(exp_minus_i_beta * s01_in_copy) * sin_theta_2 + cos_theta_2 * s10_in_copy;
+            // s11_out = s11_in;
+        }
+    };
+
+    struct xx_minus_yy {
+        static constexpr unsigned int num_target_qubits = 2;
+
+        qcs::float_t cos_theta_2;
+        qcs::float_t sin_theta_2;
+        qcs::complex_t exp_i_beta;
+        qcs::complex_t exp_minus_i_beta;
+
+        xx_minus_yy(double theta, double beta = 0.0) {
+            qcs::float_t const theta_2 = 0.5 * theta;
+            cos_theta_2 = cos(theta_2);
+            sin_theta_2 = sin(theta_2);
+            exp_i_beta = qcs::complex_t(cos(beta), sin(beta));
+            exp_minus_i_beta = qcs::complex_t(cos(beta), -sin(beta));
+        }
+
+        __device__ void apply(qcs::complex_t const& s00_in,
+                            qcs::complex_t const& s01_in,
+                            qcs::complex_t const& s10_in,
+                            qcs::complex_t const& s11_in,
+                            qcs::complex_t& s00_out,
+                            qcs::complex_t& s01_out,
+                            qcs::complex_t& s10_out,
+                            qcs::complex_t& s11_out) const {
+            auto const s00_in_copy = s00_in;
+            auto const s11_in_copy = s11_in;
+
+            s00_out = cos_theta_2 * s00_in_copy + multiply_i_real(exp_i_beta * s11_in_copy, sin_theta_2);
+            // s01_out = s01_in;
+            // s10_out = s10_in;
+            s11_out = multiply_i_m(exp_minus_i_beta * s00_in_copy) * sin_theta_2 + cos_theta_2 * s11_in_copy;
+        }
+    };
+
+    struct dcx {
+        static constexpr unsigned int num_target_qubits = 2;
+
+        __device__ void apply(qcs::complex_t const& s00_in,
+                            qcs::complex_t const& s01_in,
+                            qcs::complex_t const& s10_in,
+                            qcs::complex_t const& s11_in,
+                            qcs::complex_t& s00_out,
+                            qcs::complex_t& s01_out,
+                            qcs::complex_t& s10_out,
+                            qcs::complex_t& s11_out) const {
+            // s00_out = s00_in;
+            s01_out = s10_in;
+            s10_out = s11_in;
+            s11_out = s01_in;
+        }
+    };
+
+    struct ecr {
+        static constexpr unsigned int num_target_qubits = 2;
+
+        __device__ void apply(qcs::complex_t const& s00_in,
+                            qcs::complex_t const& s01_in,
+                            qcs::complex_t const& s10_in,
+                            qcs::complex_t const& s11_in,
+                            qcs::complex_t& s00_out,
+                            qcs::complex_t& s01_out,
+                            qcs::complex_t& s10_out,
+                            qcs::complex_t& s11_out) const {
+            s00_out = M_SQRT1_2 * s01_in + multiply_i(s11_in) * M_SQRT1_2;
+            s01_out = M_SQRT1_2 * s00_in + multiply_i_real(s10_in, M_SQRT1_2);
+            s10_out = multiply_i(s01_in) * M_SQRT1_2 + M_SQRT1_2 * s11_in;
+            s11_out = multiply_i_real(s00_in, M_SQRT1_2) + M_SQRT1_2 * s10_in;
+        }
+    };
+
+    struct rccx {
+        static constexpr unsigned int num_target_qubits = 3;
+
+        __device__ void apply(qcs::complex_t const& s000_in,
+                            qcs::complex_t const& s001_in,
+                            qcs::complex_t const& s010_in,
+                            qcs::complex_t const& s011_in,
+                            qcs::complex_t const& s100_in,
+                            qcs::complex_t const& s101_in,
+                            qcs::complex_t const& s110_in,
+                            qcs::complex_t const& s111_in,
+                            qcs::complex_t& s000_out,
+                            qcs::complex_t& s001_out,
+                            qcs::complex_t& s010_out,
+                            qcs::complex_t& s011_out,
+                            qcs::complex_t& s100_out,
+                            qcs::complex_t& s101_out,
+                            qcs::complex_t& s110_out,
+                            qcs::complex_t& s111_out) const {
+            // s000_out = s000_in;
+            // s001_out = s001_in;
+            // s010_out = s010_in;
+            s011_out = multiply_i_m(s111_in);
+            // s100_out = s100_in;
+            s101_out = -s101_in;
+            // s110_out = s110_in;
+            s111_out = multiply_i(s011_in);
+        }
+    };
+
+    struct rcccx {
+        static constexpr unsigned int num_target_qubits = 4;
+
+        __device__ void apply(qcs::complex_t const& s0000_in,
+                            qcs::complex_t const& s0001_in,
+                            qcs::complex_t const& s0010_in,
+                            qcs::complex_t const& s0011_in,
+                            qcs::complex_t const& s0100_in,
+                            qcs::complex_t const& s0101_in,
+                            qcs::complex_t const& s0110_in,
+                            qcs::complex_t const& s0111_in,
+                            qcs::complex_t const& s1000_in,
+                            qcs::complex_t const& s1001_in,
+                            qcs::complex_t const& s1010_in,
+                            qcs::complex_t const& s1011_in,
+                            qcs::complex_t const& s1100_in,
+                            qcs::complex_t const& s1101_in,
+                            qcs::complex_t const& s1110_in,
+                            qcs::complex_t const& s1111_in,
+                            qcs::complex_t& s0000_out,
+                            qcs::complex_t& s0001_out,
+                            qcs::complex_t& s0010_out,
+                            qcs::complex_t& s0011_out,
+                            qcs::complex_t& s0100_out,
+                            qcs::complex_t& s0101_out,
+                            qcs::complex_t& s0110_out,
+                            qcs::complex_t& s0111_out,
+                            qcs::complex_t& s1000_out,
+                            qcs::complex_t& s1001_out,
+                            qcs::complex_t& s1010_out,
+                            qcs::complex_t& s1011_out,
+                            qcs::complex_t& s1100_out,
+                            qcs::complex_t& s1101_out,
+                            qcs::complex_t& s1110_out,
+                            qcs::complex_t& s1111_out) const {
+            // s0000_out = s0000_in;
+            // s0001_out = s0001_in;
+            // s0010_out = s0010_in;
+            s0011_out = multiply_i(s0011_in);
+            // s0100_out = s0100_in;
+            // s0101_out = s0101_in;
+            // s0110_out = s0110_in;
+            s0111_out = s1111_in;
+            // s1000_out = s1000_in;
+            // s1001_out = s1001_in;
+            // s1010_out = s1010_in;
+            s1011_out = multiply_i_m(s1011_in);
+            // s1100_out = s1100_in;
+            // s1101_out = s1101_in;
+            // s1110_out = s1110_in;
+            s1111_out = -s0111_in;
         }
     };
 
@@ -578,6 +1051,362 @@ cuda_gate(GateType const gateobj) {
     }
 
     gateobj.apply(*ps00_in, *ps01_in, *ps10_in, *ps11_in, qcs::kernel_common_constant.state_data_device[index_state_00], qcs::kernel_common_constant.state_data_device[index_state_01], qcs::kernel_common_constant.state_data_device[index_state_10], qcs::kernel_common_constant.state_data_device[index_state_11]);
+}
+
+template<typename GateType>
+__global__
+typename std::enable_if<GateType::num_target_qubits==3>::type
+cuda_gate(GateType const gateobj) {
+    int64_t const thread_num = (uint64_t)threadIdx.x + (uint64_t)blockIdx.x * (uint64_t)blockDim.x;
+
+    uint64_t index_state_000, index_state_001, index_state_010, index_state_011;
+    uint64_t index_state_100, index_state_101, index_state_110, index_state_111;
+    int is_measured_bits, measured_value_bits;
+    thread_num_to_state_index_q3(
+        thread_num,
+        index_state_000, index_state_001, index_state_010, index_state_011,
+        index_state_100, index_state_101, index_state_110, index_state_111,
+        is_measured_bits, measured_value_bits
+    );
+
+    qcs::complex_t const* ps000_in;
+    qcs::complex_t const* ps001_in;
+    qcs::complex_t const* ps010_in;
+    qcs::complex_t const* ps011_in;
+    qcs::complex_t const* ps100_in;
+    qcs::complex_t const* ps101_in;
+    qcs::complex_t const* ps110_in;
+    qcs::complex_t const* ps111_in;
+
+    if (
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==0)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==0)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==0))
+    ) {
+        ps000_in = &qcs::kernel_common_constant.state_data_device[index_state_000];
+    } else {
+        ps000_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==0)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==0)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==1))
+    ) {
+        ps001_in = &qcs::kernel_common_constant.state_data_device[index_state_001];
+    } else {
+        ps001_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==0)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==1)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==0))
+    ) {
+        ps010_in = &qcs::kernel_common_constant.state_data_device[index_state_010];
+    } else {
+        ps010_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==0)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==1)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==1))
+    ) {
+        ps011_in = &qcs::kernel_common_constant.state_data_device[index_state_011];
+    } else {
+        ps011_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==1)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==0)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==0))
+    ) {
+        ps100_in = &qcs::kernel_common_constant.state_data_device[index_state_100];
+    } else {
+        ps100_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==1)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==0)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==1))
+    ) {
+        ps101_in = &qcs::kernel_common_constant.state_data_device[index_state_101];
+    } else {
+        ps101_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==1)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==1)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==0))
+    ) {
+        ps110_in = &qcs::kernel_common_constant.state_data_device[index_state_110];
+    } else {
+        ps110_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==1)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==1)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==1))
+    ) {
+        ps111_in = &qcs::kernel_common_constant.state_data_device[index_state_111];
+    } else {
+        ps111_in = &zero_constant;
+    }
+
+    gateobj.apply(
+        *ps000_in, *ps001_in, *ps010_in, *ps011_in,
+        *ps100_in, *ps101_in, *ps110_in, *ps111_in,
+        qcs::kernel_common_constant.state_data_device[index_state_000],
+        qcs::kernel_common_constant.state_data_device[index_state_001],
+        qcs::kernel_common_constant.state_data_device[index_state_010],
+        qcs::kernel_common_constant.state_data_device[index_state_011],
+        qcs::kernel_common_constant.state_data_device[index_state_100],
+        qcs::kernel_common_constant.state_data_device[index_state_101],
+        qcs::kernel_common_constant.state_data_device[index_state_110],
+        qcs::kernel_common_constant.state_data_device[index_state_111]
+    );
+}
+
+template<typename GateType>
+__global__
+typename std::enable_if<GateType::num_target_qubits==4>::type
+cuda_gate(GateType const gateobj) {
+    int64_t const thread_num = (uint64_t)threadIdx.x + (uint64_t)blockIdx.x * (uint64_t)blockDim.x;
+
+    uint64_t index_state_0000, index_state_0001, index_state_0010, index_state_0011;
+    uint64_t index_state_0100, index_state_0101, index_state_0110, index_state_0111;
+    uint64_t index_state_1000, index_state_1001, index_state_1010, index_state_1011;
+    uint64_t index_state_1100, index_state_1101, index_state_1110, index_state_1111;
+    int is_measured_bits, measured_value_bits;
+    thread_num_to_state_index_q4(
+        thread_num,
+        index_state_0000, index_state_0001, index_state_0010, index_state_0011,
+        index_state_0100, index_state_0101, index_state_0110, index_state_0111,
+        index_state_1000, index_state_1001, index_state_1010, index_state_1011,
+        index_state_1100, index_state_1101, index_state_1110, index_state_1111,
+        is_measured_bits, measured_value_bits
+    );
+
+    qcs::complex_t const* ps0000_in;
+    qcs::complex_t const* ps0001_in;
+    qcs::complex_t const* ps0010_in;
+    qcs::complex_t const* ps0011_in;
+    qcs::complex_t const* ps0100_in;
+    qcs::complex_t const* ps0101_in;
+    qcs::complex_t const* ps0110_in;
+    qcs::complex_t const* ps0111_in;
+    qcs::complex_t const* ps1000_in;
+    qcs::complex_t const* ps1001_in;
+    qcs::complex_t const* ps1010_in;
+    qcs::complex_t const* ps1011_in;
+    qcs::complex_t const* ps1100_in;
+    qcs::complex_t const* ps1101_in;
+    qcs::complex_t const* ps1110_in;
+    qcs::complex_t const* ps1111_in;
+
+    if (
+        (!(is_measured_bits&8) || ((is_measured_bits&8) && (measured_value_bits&8)==0)) &&
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==0)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==0)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==0))
+    ) {
+        ps0000_in = &qcs::kernel_common_constant.state_data_device[index_state_0000];
+    } else {
+        ps0000_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&8) || ((is_measured_bits&8) && (measured_value_bits&8)==0)) &&
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==0)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==0)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==1))
+    ) {
+        ps0001_in = &qcs::kernel_common_constant.state_data_device[index_state_0001];
+    } else {
+        ps0001_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&8) || ((is_measured_bits&8) && (measured_value_bits&8)==0)) &&
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==0)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==1)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==0))
+    ) {
+        ps0010_in = &qcs::kernel_common_constant.state_data_device[index_state_0010];
+    } else {
+        ps0010_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&8) || ((is_measured_bits&8) && (measured_value_bits&8)==0)) &&
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==0)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==1)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==1))
+    ) {
+        ps0011_in = &qcs::kernel_common_constant.state_data_device[index_state_0011];
+    } else {
+        ps0011_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&8) || ((is_measured_bits&8) && (measured_value_bits&8)==0)) &&
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==1)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==0)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==0))
+    ) {
+        ps0100_in = &qcs::kernel_common_constant.state_data_device[index_state_0100];
+    } else {
+        ps0100_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&8) || ((is_measured_bits&8) && (measured_value_bits&8)==0)) &&
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==1)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==0)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==1))
+    ) {
+        ps0101_in = &qcs::kernel_common_constant.state_data_device[index_state_0101];
+    } else {
+        ps0101_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&8) || ((is_measured_bits&8) && (measured_value_bits&8)==0)) &&
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==1)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==1)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==0))
+    ) {
+        ps0110_in = &qcs::kernel_common_constant.state_data_device[index_state_0110];
+    } else {
+        ps0110_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&8) || ((is_measured_bits&8) && (measured_value_bits&8)==0)) &&
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==1)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==1)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==1))
+    ) {
+        ps0111_in = &qcs::kernel_common_constant.state_data_device[index_state_0111];
+    } else {
+        ps0111_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&8) || ((is_measured_bits&8) && (measured_value_bits&8)==1)) &&
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==0)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==0)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==0))
+    ) {
+        ps1000_in = &qcs::kernel_common_constant.state_data_device[index_state_1000];
+    } else {
+        ps1000_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&8) || ((is_measured_bits&8) && (measured_value_bits&8)==1)) &&
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==0)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==0)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==1))
+    ) {
+        ps1001_in = &qcs::kernel_common_constant.state_data_device[index_state_1001];
+    } else {
+        ps1001_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&8) || ((is_measured_bits&8) && (measured_value_bits&8)==1)) &&
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==0)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==1)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==0))
+    ) {
+        ps1010_in = &qcs::kernel_common_constant.state_data_device[index_state_1010];
+    } else {
+        ps1010_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&8) || ((is_measured_bits&8) && (measured_value_bits&8)==1)) &&
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==0)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==1)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==1))
+    ) {
+        ps1011_in = &qcs::kernel_common_constant.state_data_device[index_state_1011];
+    } else {
+        ps1011_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&8) || ((is_measured_bits&8) && (measured_value_bits&8)==1)) &&
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==1)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==0)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==0))
+    ) {
+        ps1100_in = &qcs::kernel_common_constant.state_data_device[index_state_1100];
+    } else {
+        ps1100_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&8) || ((is_measured_bits&8) && (measured_value_bits&8)==1)) &&
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==1)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==0)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==1))
+    ) {
+        ps1101_in = &qcs::kernel_common_constant.state_data_device[index_state_1101];
+    } else {
+        ps1101_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&8) || ((is_measured_bits&8) && (measured_value_bits&8)==1)) &&
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==1)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==1)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==0))
+    ) {
+        ps1110_in = &qcs::kernel_common_constant.state_data_device[index_state_1110];
+    } else {
+        ps1110_in = &zero_constant;
+    }
+
+    if (
+        (!(is_measured_bits&8) || ((is_measured_bits&8) && (measured_value_bits&8)==1)) &&
+        (!(is_measured_bits&4) || ((is_measured_bits&4) && (measured_value_bits&4)==1)) &&
+        (!(is_measured_bits&2) || ((is_measured_bits&2) && (measured_value_bits&2)==1)) &&
+        (!(is_measured_bits&1) || ((is_measured_bits&1) && (measured_value_bits&1)==1))
+    ) {
+        ps1111_in = &qcs::kernel_common_constant.state_data_device[index_state_1111];
+    } else {
+        ps1111_in = &zero_constant;
+    }
+
+    gateobj.apply(
+        *ps0000_in, *ps0001_in, *ps0010_in, *ps0011_in,
+        *ps0100_in, *ps0101_in, *ps0110_in, *ps0111_in,
+        *ps1000_in, *ps1001_in, *ps1010_in, *ps1011_in,
+        *ps1100_in, *ps1101_in, *ps1110_in, *ps1111_in,
+        qcs::kernel_common_constant.state_data_device[index_state_0000],
+        qcs::kernel_common_constant.state_data_device[index_state_0001],
+        qcs::kernel_common_constant.state_data_device[index_state_0010],
+        qcs::kernel_common_constant.state_data_device[index_state_0011],
+        qcs::kernel_common_constant.state_data_device[index_state_0100],
+        qcs::kernel_common_constant.state_data_device[index_state_0101],
+        qcs::kernel_common_constant.state_data_device[index_state_0110],
+        qcs::kernel_common_constant.state_data_device[index_state_0111],
+        qcs::kernel_common_constant.state_data_device[index_state_1000],
+        qcs::kernel_common_constant.state_data_device[index_state_1001],
+        qcs::kernel_common_constant.state_data_device[index_state_1010],
+        qcs::kernel_common_constant.state_data_device[index_state_1011],
+        qcs::kernel_common_constant.state_data_device[index_state_1100],
+        qcs::kernel_common_constant.state_data_device[index_state_1101],
+        qcs::kernel_common_constant.state_data_device[index_state_1110],
+        qcs::kernel_common_constant.state_data_device[index_state_1111]
+    );
 }
 
 namespace cubUtility {
@@ -1829,6 +2658,15 @@ void simulator::gate_sx_pow(double exponent, int target_qubit_num, std::vector<i
     throw std::runtime_error("not implemented");
 }
 
+void simulator::gate_sxdg(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::sxdg(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_sxdg_pow(double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
 void simulator::gate_rx(double theta, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
     ensure_qubits_allocated();
     core->operate_gate(gate::rx(theta), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
@@ -1865,6 +2703,118 @@ void simulator::gate_u4(double theta, double phi, double lambda, double gamma, i
 }
 
 void simulator::gate_u4_pow(double theta, double phi, double lambda, double gamma, double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
+void simulator::gate_id(int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::id(), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_id_pow(double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
+void simulator::gate_r(double theta, double phi, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::r(theta, phi), {target_qubit_num}, std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_r_pow(double theta, double phi, double exponent, int target_qubit_num, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
+void simulator::gate_rzz(double theta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::rzz(theta), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_rzz_pow(double theta, double exponent, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::rzz(theta * exponent), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_rxx(double theta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::rxx(theta), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_rxx_pow(double theta, double exponent, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::rxx(theta * exponent), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_ryy(double theta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::ryy(theta), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_ryy_pow(double theta, double exponent, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::ryy(theta * exponent), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_rzx(double theta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::rzx(theta), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_rzx_pow(double theta, double exponent, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::rzx(theta * exponent), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_dcx(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::dcx(), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_dcx_pow(double exponent, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
+void simulator::gate_ecr(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::ecr(), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_ecr_pow(double exponent, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
+void simulator::gate_xx_plus_yy(double theta, double beta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::xx_plus_yy(theta, beta), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_xx_plus_yy_pow(double theta, double beta, double exponent, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
+void simulator::gate_xx_minus_yy(double theta, double beta, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::xx_minus_yy(theta, beta), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_xx_minus_yy_pow(double theta, double beta, double exponent, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
+void simulator::gate_rccx(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::rccx(), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_rccx_pow(double exponent, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    throw std::runtime_error("not implemented");
+}
+
+void simulator::gate_rcccx(std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::rcccx(), std::move(target_qubit_num_list), std::move(negctrl_qubit_num_list), std::move(ctrl_qubit_num_list));
+}
+
+void simulator::gate_rcccx_pow(double exponent, std::vector<int>&& target_qubit_num_list, std::vector<int>&& negctrl_qubit_num_list, std::vector<int>&& ctrl_qubit_num_list) {
     throw std::runtime_error("not implemented");
 }
 
