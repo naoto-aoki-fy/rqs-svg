@@ -387,6 +387,97 @@ namespace gate {
         }
     };
 
+    struct u3 {
+        static constexpr unsigned int num_target_qubits = 1;
+        qcs::float_t cos_theta_2;
+        qcs::float_t sin_theta_2;
+        qcs::complex_t exp_i_phi;
+        qcs::complex_t exp_i_lambda;
+        qcs::complex_t exp_i_phi_plus_lambda;
+        u3(double theta, double phi, double lambda) {
+            qcs::float_t const theta_2 = 0.5 * theta;
+            cos_theta_2 = cos(theta_2);
+            sin_theta_2 = sin(theta_2);
+            exp_i_phi = qcs::complex_t(cos(phi), sin(phi));
+            exp_i_lambda = qcs::complex_t(cos(lambda), sin(lambda));
+            qcs::float_t const phi_plus_lambda = phi + lambda;
+            exp_i_phi_plus_lambda = qcs::complex_t(cos(phi_plus_lambda), sin(phi_plus_lambda));
+        }
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+            qcs::complex_t const s0_in_copy = s0_in;
+            qcs::complex_t const s1_in_copy = s1_in;
+            s0_out = cos_theta_2 * s0_in_copy - sin_theta_2 * exp_i_lambda * s1_in_copy;
+            s1_out = exp_i_phi * sin_theta_2 * s0_in_copy + exp_i_phi_plus_lambda * cos_theta_2 * s1_in_copy;
+        }
+    };
+
+    struct u2 {
+        static constexpr unsigned int num_target_qubits = 1;
+        qcs::complex_t exp_i_phi;
+        qcs::complex_t exp_i_lambda;
+        qcs::complex_t exp_i_phi_plus_lambda;
+        u2(double phi, double lambda) {
+            exp_i_phi = qcs::complex_t(cos(phi), sin(phi));
+            exp_i_lambda = qcs::complex_t(cos(lambda), sin(lambda));
+            qcs::float_t const phi_plus_lambda = phi + lambda;
+            exp_i_phi_plus_lambda = qcs::complex_t(cos(phi_plus_lambda), sin(phi_plus_lambda));
+        }
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+            qcs::complex_t const s0_in_copy = s0_in;
+            qcs::complex_t const s1_in_copy = s1_in;
+            s0_out = M_SQRT1_2 * (s0_in_copy - exp_i_lambda * s1_in_copy);
+            s1_out = M_SQRT1_2 * (exp_i_phi * s0_in_copy + exp_i_phi_plus_lambda * s1_in_copy);
+        }
+    };
+
+    struct u1 {
+        static constexpr unsigned int num_target_qubits = 1;
+        qcs::complex_t exp_i_lambda;
+        u1(double lambda) {
+            exp_i_lambda = qcs::complex_t(cos(lambda), sin(lambda));
+        }
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+            s0_out = s0_in;
+            s1_out = exp_i_lambda * s1_in;
+        }
+    };
+
+    struct u {
+        static constexpr unsigned int num_target_qubits = 1;
+        qcs::float_t cos_theta_2;
+        qcs::float_t sin_theta_2;
+        qcs::complex_t exp_i_phi;
+        qcs::complex_t exp_i_lambda;
+        qcs::complex_t exp_i_phi_plus_lambda;
+        u(double theta, double phi, double lambda) {
+            qcs::float_t const theta_2 = 0.5 * theta;
+            cos_theta_2 = cos(theta_2);
+            sin_theta_2 = sin(theta_2);
+            exp_i_phi = qcs::complex_t(cos(phi), sin(phi));
+            exp_i_lambda = qcs::complex_t(cos(lambda), sin(lambda));
+            qcs::float_t const phi_plus_lambda = phi + lambda;
+            exp_i_phi_plus_lambda = qcs::complex_t(cos(phi_plus_lambda), sin(phi_plus_lambda));
+        }
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+            qcs::complex_t const s0_in_copy = s0_in;
+            qcs::complex_t const s1_in_copy = s1_in;
+            s0_out = cos_theta_2 * s0_in_copy - sin_theta_2 * exp_i_lambda * s1_in_copy;
+            s1_out = exp_i_phi * sin_theta_2 * s0_in_copy + exp_i_phi_plus_lambda * cos_theta_2 * s1_in_copy;
+        }
+    };
+
+    struct p {
+        static constexpr unsigned int num_target_qubits = 1;
+        qcs::complex_t exp_i_theta;
+        p(double theta) {
+            exp_i_theta = qcs::complex_t(cos(theta), sin(theta));
+        }
+        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
+            s0_out = s0_in;
+            s1_out = exp_i_theta * s1_in;
+        }
+    };
+
     struct global_phase {
         static constexpr unsigned int num_target_qubits = 0;
         qcs::complex_t exp_i_theta;
@@ -2665,6 +2756,31 @@ void simulator::gate_rz(double theta, std::vector<int> target_qubit_num_list, st
 void simulator::gate_u4(double theta, double phi, double lambda, double gamma, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
     ensure_qubits_allocated();
     core->operate_gate(gate::u4(theta, phi, lambda, gamma), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
+}
+
+void simulator::gate_u3(double theta, double phi, double lambda, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::u3(theta, phi, lambda), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
+}
+
+void simulator::gate_u2(double phi, double lambda, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::u2(phi, lambda), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
+}
+
+void simulator::gate_u1(double lambda, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::u1(lambda), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
+}
+
+void simulator::gate_u(double theta, double phi, double lambda, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::u(theta, phi, lambda), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
+}
+
+void simulator::gate_p(double theta, std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list) {
+    ensure_qubits_allocated();
+    core->operate_gate(gate::p(theta), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
 
