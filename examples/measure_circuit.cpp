@@ -1,0 +1,25 @@
+// g++ -fPIC -shared -I.. -std=c++11 measure_circuit.cpp -o measure_circuit.so
+
+#include <qcs.hpp>
+
+static constexpr unsigned int num_qubits = 14;
+static constexpr unsigned int num_clbits = num_qubits;
+
+extern "C"
+void circuit_init(qcs::simulator* sim) {
+    sim->set_num_qubits(num_qubits);
+    sim->set_num_clbits(num_clbits);
+}
+
+extern "C"
+void circuit_run(qcs::simulator* sim) {
+
+    for (int qubit_num = 0; qubit_num < num_qubits; qubit_num++) {
+        sim->gate_h({qubit_num}, {}, {});
+    }
+
+    for (int qubit_num = 0; qubit_num < num_qubits; qubit_num++) {
+        sim->measure(qubit_num, qubit_num);
+    }
+
+}

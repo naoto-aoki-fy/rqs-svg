@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cinttypes>
 #include <unistd.h>
+#include <dlfcn.h>
 
 #include <stdexcept>
 #include <string>
@@ -2508,7 +2509,7 @@ void simulator::set_num_qubits(int num_qubits) {
 
 void simulator::set_num_clbits(int num_clbits) {
     this->num_clbits = num_clbits;
-    this->clbits.resize(num_clbits);
+    // this->clbits.resize(num_clbits);
 }
 
 int simulator::measure(int qubit_num) {
@@ -2741,76 +2742,37 @@ void simulator::gate_rcccx(std::vector<int> target_qubit_num_list, std::vector<i
 
 } /* qcs */
 
-#ifdef QCS_BUILD_STANDALONE
-void ghz_sample() {
+int main(int argc, char** argv)
+{
     qcs::simulator sim;
     sim.setup();
     ATLC_DEFER_FUNC(sim.dispose);
 
-    constexpr unsigned int num_qubits = 14;
-    sim.set_num_qubits(num_qubits);
+    char const* const usercircuit_so_path = argv[1];
+    int num_samples = 1;
+    if (argc >= 3) { num_samples = atoi(argv[2]); }
 
-    uint64_t const num_samples = UINT64_C(1) << num_qubits;
+    void* usercircuit_dl = dlopen(usercircuit_so_path, RTLD_LAZY);
+    if (usercircuit_dl == NULL) { throw std::runtime_error("dlopen failed"); }
+    ATLC_DEFER_FUNC(dlclose, usercircuit_dl);
 
-    uint64_t measured_bit = 0;
-    for(int sample_num = 0; sample_num < num_samples; ++sample_num) {
+    auto circuit_init = reinterpret_cast<void(*)(qcs::simulator*)>(dlsym(usercircuit_dl, "circuit_init"));
+    auto circuit_run = reinterpret_cast<void(*)(qcs::simulator*)>(dlsym(usercircuit_dl, "circuit_run"));
 
-        sim.gate_h({0}, {}, {});
+    circuit_init(&sim);
 
-        for(int qubit_num = 1; qubit_num < num_qubits; qubit_num++)
-        {
-            if ((measured_bit>>qubit_num)&1) {
-                sim.gate_x({qubit_num}, {0}, {});
-            } else {
-                sim.gate_x({qubit_num}, {}, {0});
-            }
+    for (int i=0; i<num_samples; i++) {
+
+        circuit_run(&sim);
+
+        unsigned long long const clbit = sim.get_clbits().to_ullong();
+        fprintf(stdout, "%llu\n", clbit);
+
+        if (num_samples > 1) {
+            sim.set_zero_state();
+            sim.reset_clbits();
         }
-
-        measured_bit = 0;
-        for (int qubit_num = 0; qubit_num < num_qubits; qubit_num++) {
-            if (sim.measure(qubit_num)) {
-                measured_bit |= UINT64_C(1) << qubit_num;
-            }
-        }
-
-        if (sim.get_proc_num() == 0) {
-            fprintf(stdout, "%" PRIu64 "\n", measured_bit);
-        }
-
     }
-} /* ghz_sample */
 
-void measurement_sample() {
-    qcs::simulator sim;
-    sim.setup();
-    ATLC_DEFER_FUNC(sim.dispose);
-
-    constexpr unsigned int num_qubits = 14;
-    sim.set_num_qubits(num_qubits);
-
-    uint64_t const num_samples = UINT64_C(1) << num_qubits;
-
-    for(int sample_num = 0; sample_num < num_samples; ++sample_num) {
-
-        sim.set_flat_state();
-
-        uint64_t measured_bit = 0;
-        for (int qubit_num = 0; qubit_num < num_qubits; qubit_num++) {
-            if (sim.measure(qubit_num)) {
-                measured_bit |= UINT64_C(1) << qubit_num;
-            }
-        }
-
-        if (sim.get_proc_num() == 0) {
-            fprintf(stdout, "%" PRIu64 "\n", measured_bit);
-        }
-
-    }
-}
-
-int main(int argc, char** argv) {
-    // measurement_sample();
-    ghz_sample();
     return 0;
 }
-#endif

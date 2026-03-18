@@ -5,13 +5,10 @@ MPIRUN = mpirun
 MPIRUN_FLAGS ?= -np $(shell nvidia-smi -L 2>/dev/null | wc -l)
 
 .PHONY: target
-target: lib/libqcs.so
+target: qcs
 
 qcs: qcs.cu qcs.hpp
-	$(NVCC) -DQCS_BUILD_STANDALONE $(NVCCFLAGS) $< -o $@
-
-lib/libqcs.so: qcs.cu qcs.hpp
-	$(NVCC) -Xcompiler -fPIC -shared $(NVCCFLAGS) $< -o $@
+	$(NVCC) $(NVCCFLAGS) $< -o $@
 
 .PHONY: run
 run: qcs
@@ -19,4 +16,4 @@ run: qcs
 
 .PHONY: clean
 clean:
-	$(RM) qcs lib/libqcs.so
+	$(RM) qcs
