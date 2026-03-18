@@ -2317,9 +2317,8 @@ void operate_gate(GateType gateobj, std::vector<int> target_qubit_num_logical_li
     assert(target_qubit_num_logical_list_input.size() == GateType::num_target_qubits);
 
     target_qubit_num_logical_list = std::move(target_qubit_num_logical_list_input);
-    // todo: move?
-    negative_control_qubit_num_logical_list = (negative_control_qubit_num_logical_list_input);
-    positive_control_qubit_num_logical_list = (positive_control_qubit_num_logical_list_input);
+    negative_control_qubit_num_logical_list = std::move(negative_control_qubit_num_logical_list_input);
+    positive_control_qubit_num_logical_list = std::move(positive_control_qubit_num_logical_list_input);
 
     prepare_control_qubit_num_list();
     if (!measured_control_condition) return;
