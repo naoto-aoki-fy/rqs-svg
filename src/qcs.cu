@@ -42,7 +42,7 @@
 #include <atlc/check_curand.hpp>
 #include <atlc/check_nccl.hpp>
 
-#include "qcs.hpp"
+#include <qcs.hpp>
 
 namespace qcs {
 
