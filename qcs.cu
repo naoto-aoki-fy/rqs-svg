@@ -442,41 +442,8 @@ namespace gate {
         }
     };
 
-    struct u {
-        static constexpr unsigned int num_target_qubits = 1;
-        qcs::float_t cos_theta_2;
-        qcs::float_t sin_theta_2;
-        qcs::complex_t exp_i_phi;
-        qcs::complex_t exp_i_lambda;
-        qcs::complex_t exp_i_phi_plus_lambda;
-        u(double theta, double phi, double lambda) {
-            qcs::float_t const theta_2 = 0.5 * theta;
-            cos_theta_2 = cos(theta_2);
-            sin_theta_2 = sin(theta_2);
-            exp_i_phi = qcs::complex_t(cos(phi), sin(phi));
-            exp_i_lambda = qcs::complex_t(cos(lambda), sin(lambda));
-            qcs::float_t const phi_plus_lambda = phi + lambda;
-            exp_i_phi_plus_lambda = qcs::complex_t(cos(phi_plus_lambda), sin(phi_plus_lambda));
-        }
-        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
-            qcs::complex_t const s0_in_copy = s0_in;
-            qcs::complex_t const s1_in_copy = s1_in;
-            s0_out = cos_theta_2 * s0_in_copy - sin_theta_2 * exp_i_lambda * s1_in_copy;
-            s1_out = exp_i_phi * sin_theta_2 * s0_in_copy + exp_i_phi_plus_lambda * cos_theta_2 * s1_in_copy;
-        }
-    };
-
-    struct p {
-        static constexpr unsigned int num_target_qubits = 1;
-        qcs::complex_t exp_i_theta;
-        p(double theta) {
-            exp_i_theta = qcs::complex_t(cos(theta), sin(theta));
-        }
-        __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
-            s0_out = s0_in;
-            s1_out = exp_i_theta * s1_in;
-        }
-    };
+    typedef u3 u;
+    typedef u1 p;
 
     struct global_phase {
         static constexpr unsigned int num_target_qubits = 0;
