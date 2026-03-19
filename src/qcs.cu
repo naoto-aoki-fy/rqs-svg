@@ -2159,7 +2159,7 @@ void update_measured_list() {
 void save_statevector(char const* const outfn) {
 
     MPI_Barrier(MPI_COMM_WORLD);
-    if (proc_num == 0) { fprintf(stderr, "[info] dump statevector\n"); }
+    // if (proc_num == 0) { fprintf(stderr, "[info] dump statevector\n"); }
 
     qcs::complex_t* state_data_host = (qcs::complex_t*)malloc(num_states_local * sizeof(qcs::complex_t));
     ATLC_DEFER_FUNC(free, state_data_host);
@@ -2840,6 +2840,10 @@ std::string simulator::get_clbits_string() const {
     return clbits_string;
 }
 
+void simulator::save_statevector(char const* const outfn) {
+    this->core->save_statevector(outfn);
+}
+
 } /* qcs */
 
 int main(int argc, char** argv)
@@ -2874,11 +2878,13 @@ int main(int argc, char** argv)
 
         fprintf(stdout, "%s\n", sim.get_clbits_string().c_str());
 
-        if (num_samples > 1) {
+        if (i != num_samples - 1) {
             sim.set_zero_state();
             sim.reset_clbits();
         }
     }
+
+    sim.save_statevector("statevector_output.bin");
 
     return 0;
 }
