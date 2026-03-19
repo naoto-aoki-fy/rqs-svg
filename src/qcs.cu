@@ -2831,11 +2831,18 @@ int main(int argc, char** argv)
     sim.setup();
     ATLC_DEFER_FUNC(sim.dispose);
 
+    if (argc <= 1) { throw std::runtime_error("argv[1] is not set."); }
     char const* const usercircuit_so_path = argv[1];
     int num_samples = 1;
     if (argc >= 3) { num_samples = atoi(argv[2]); }
 
-    void* usercircuit_dl = dlopen(usercircuit_so_path, RTLD_LAZY);
+    char const* const usercircuit_so_abspath = realpath(usercircuit_so_path, NULL);
+    if (usercircuit_so_abspath == NULL) {
+        throw std::runtime_error("realpath returned NULL");
+    }
+    ATLC_DEFER_FUNC(free, (void*)usercircuit_so_abspath);
+
+    void* usercircuit_dl = dlopen(usercircuit_so_abspath, RTLD_LAZY);
     if (usercircuit_dl == NULL) { throw std::runtime_error("dlopen failed"); }
     ATLC_DEFER_FUNC(dlclose, usercircuit_dl);
 
