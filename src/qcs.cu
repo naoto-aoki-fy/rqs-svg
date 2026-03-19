@@ -576,7 +576,7 @@ namespace gate {
         qcs::float_t sin_theta_2;
         rx(double theta) {
             cos_theta_2 = cos(0.5 * theta);
-            cos_theta_2 = sin(0.5 * theta);
+            sin_theta_2 = sin(0.5 * theta);
         }
         __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
             auto const s0_in_copy = s0_in;
@@ -592,7 +592,7 @@ namespace gate {
         qcs::float_t sin_theta_2;
         ry(double theta) {
             cos_theta_2 = cos(0.5 * theta);
-            cos_theta_2 = sin(0.5 * theta);
+            sin_theta_2 = sin(0.5 * theta);
         }
         __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
             auto const s0_in_copy = s0_in;
@@ -608,7 +608,7 @@ namespace gate {
         qcs::float_t sin_theta_2;
         rz(double theta) {
             cos_theta_2 = cos(0.5 * theta);
-            cos_theta_2 = sin(0.5 * theta);
+            sin_theta_2 = sin(0.5 * theta);
         }
         __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
             s0_out = qcs::complex_t(cos_theta_2, - sin_theta_2) * s0_in;
