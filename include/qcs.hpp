@@ -1,6 +1,5 @@
 #pragma once
 #include <vector>
-#include <bitset>
 #include <stdexcept>
 #include <cstdint>
 
@@ -13,7 +12,7 @@ namespace qcs {
         int num_qubits;
         int num_clbits;
         void ensure_qubits_allocated();
-        std::bitset<max_num_clbits> clbits;
+        std::vector<bool> clbits;
     public:
         simulator();
         void setup();
@@ -24,7 +23,9 @@ namespace qcs {
 
         void set_num_qubits(int num_qubits);
         void set_num_clbits(int num_clbits);
-        std::bitset<max_num_clbits> get_clbits() const { return this->clbits; }
+        std::vector<bool> const& get_clbits() const;
+        std::vector<bool>& get_clbits();
+        std::string get_clbits_string() const;
 
         void reset(int qubit_num);
         void set_zero_state();
@@ -32,9 +33,7 @@ namespace qcs {
         void set_flat_state();
         void set_entangled_state();
         void set_random_state();
-        void reset_clbits() {
-            clbits.reset();
-        }
+        void reset_clbits();
 
         void gate_global_phase(double theta, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
 
@@ -102,5 +101,7 @@ namespace qcs {
         int measure(int qubit_num);
         int measure(int qubit_num, int clbit_num);
         int read(int clbit_num);
+
+        void save_statevector(char const* const outfn);
     };
 }

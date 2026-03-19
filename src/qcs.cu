@@ -2156,7 +2156,7 @@ void update_measured_list() {
     measured_1_qubit_num_logical_list = measured_1_qubit_num_logical_list_copy;
 }
 
-void save_statevector() {
+void save_statevector(char const* const outfn) {
 
     MPI_Barrier(MPI_COMM_WORLD);
     if (proc_num == 0) { fprintf(stderr, "[info] dump statevector\n"); }
@@ -2168,7 +2168,7 @@ void save_statevector() {
 
     for(int proc_num_active=0; proc_num_active<num_procs; proc_num_active++) {
         if (proc_num_active == proc_num) {
-            FILE* const fp = fopen("statevector_output.bin", (proc_num==0)? "wb": "rb+");
+            FILE* const fp = fopen(outfn, (proc_num==0)? "wb": "rb+");
             if (fp == NULL) {
                 throw std::runtime_error("open failed");
             }
@@ -2520,7 +2520,7 @@ int main() {
     // measurement_sample();
     GHZ_circuit_sample();
 
-    if (flag_save_statevector) { save_statevector(); }
+    if (flag_save_statevector) { save_statevector("statevector_output.bin"); }
     if (flag_calculate_checksum) { calculate_checksum(); }
 
     return 0;
@@ -2567,7 +2567,7 @@ void simulator::set_num_qubits(int num_qubits) {
 
 void simulator::set_num_clbits(int num_clbits) {
     this->num_clbits = num_clbits;
-    // this->clbits.resize(num_clbits);
+    this->clbits.resize(num_clbits);
 }
 
 int simulator::measure(int qubit_num) {
@@ -2822,6 +2822,23 @@ void simulator::gate_rcccx(std::vector<int> target_qubit_num_list, std::vector<i
     core->operate_gate(gate::rcccx(), target_qubit_num_list, negctrl_qubit_num_list, ctrl_qubit_num_list);
 }
 
+std::vector<bool> const& simulator::get_clbits() const { return this->clbits; }
+std::vector<bool>& simulator::get_clbits() { return this->clbits; }
+
+void simulator::reset_clbits() {
+    for (int clbit_num = 0; clbit_num < clbits.size(); clbit_num++) {
+        clbits[clbit_num] = 0;
+    }
+}
+
+std::string simulator::get_clbits_string() const {
+    std::string clbits_string;
+    clbits_string.reserve(clbits.size());
+    for (auto it = clbits.rbegin(); it != clbits.rend(); ++it) {
+        clbits_string.push_back(*it? '1' : '0');
+    }
+    return clbits_string;
+}
 
 } /* qcs */
 
@@ -2855,8 +2872,7 @@ int main(int argc, char** argv)
 
         circuit_run(&sim);
 
-        unsigned long long const clbit = sim.get_clbits().to_ullong();
-        fprintf(stdout, "%llu\n", clbit);
+        fprintf(stdout, "%s\n", sim.get_clbits_string().c_str());
 
         if (num_samples > 1) {
             sim.set_zero_state();
