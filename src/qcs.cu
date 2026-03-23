@@ -59,7 +59,7 @@ __device__ __host__ complex_t multiply_i_m(complex_t input) {
 }
 
 __device__ __host__ complex_t multiply_i_real(complex_t input, float_t multiplier) {
-    return complex_t(multiplier * input.imag(), - multiplier * input.real());
+    return complex_t(- multiplier * input.imag(), + multiplier * input.real());
 }
 
 constexpr uint64_t kernel_input_max_size = 256;
@@ -383,7 +383,7 @@ namespace gate {
             qcs::complex_t const s0_in_copy = s0_in;
             qcs::complex_t const s1_in_copy = s1_in;
             s0_out = exp_i_gamma * (cos_theta_2 * s0_in_copy - sin_theta_2 * exp_i_lambda * s1_in_copy);
-            s1_out = exp_i_gamma * (exp_i_phi * (sin_theta_2 * s0_in_copy - exp_i_lambda * cos_theta_2 * s1_in_copy));
+            s1_out = exp_i_gamma * (exp_i_phi * (sin_theta_2 * s0_in_copy + exp_i_lambda * cos_theta_2 * s1_in_copy));
         }
     };
 
@@ -462,9 +462,8 @@ namespace gate {
         __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
             auto const s0_in_copy = s0_in;
             auto const s1_in_copy = s1_in;
-            // break unitarity intentionally: a hack to prevent amplitude attenuation
-            s0_out = s0_in_copy + s1_in_copy;
-            s1_out = s0_in_copy - s1_in_copy;
+            s0_out = M_SQRT1_2 * (s0_in_copy + s1_in_copy);
+            s1_out = M_SQRT1_2 * (s0_in_copy - s1_in_copy);
         }
     };
 
@@ -499,9 +498,9 @@ namespace gate {
     struct z {
         static constexpr unsigned int num_target_qubits = 1;
         __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
-            auto const s0_in_copy = s0_in;
+            // auto const s0_in_copy = s0_in;
             auto const s1_in_copy = s1_in;
-            s0_out = - s0_in_copy;
+            // s0_out = s0_in_copy;
             s1_out = - s1_in_copy;
         }
     };
@@ -527,29 +526,29 @@ namespace gate {
     struct t {
         static constexpr unsigned int num_target_qubits = 1;
         __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
-            s1_out = qcs::complex_t(M_SQRT1_2, M_SQRT1_2) * s1_in;
+            auto const s1_in_copy = s1_in;
+            s1_out = qcs::complex_t(M_SQRT1_2, M_SQRT1_2) * s1_in_copy;
         }
     };
 
     struct tdg {
         static constexpr unsigned int num_target_qubits = 1;
         __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
-            s1_out = qcs::complex_t(M_SQRT1_2, - M_SQRT1_2) * s1_in;
+            auto const s1_in_copy = s1_in;
+            s1_out = qcs::complex_t(M_SQRT1_2, - M_SQRT1_2) * s1_in_copy;
         }
     };
 
     struct sx {
         static constexpr unsigned int num_target_qubits = 1;
         __device__ void apply(qcs::complex_t const& s0_in, qcs::complex_t const& s1_in, qcs::complex_t& s0_out, qcs::complex_t& s1_out) const {
-            // break unitarity intentionally: a hack to prevent amplitude attenuation
             // auto const s0_in_copy = s0_in;
             // auto const s1_in_copy = s1_in;
-            // s0_out = qcs::complex_t(M_SQRT1_2, M_SQRT1_2) * s0_in_copy + qcs::complex_t(M_SQRT1_2, - M_SQRT1_2) * s1_in_copy;
-            // s1_out = qcs::complex_t(M_SQRT1_2, - M_SQRT1_2) * s0_in_copy - qcs::complex_t(M_SQRT1_2, M_SQRT1_2) * s1_in_copy;
+            // s0_out = qcs::complex_t(0.5, 0.5) * s0_in_copy + qcs::complex_t(0.5, - 0.5) * s1_in_copy;
+            // s1_out = qcs::complex_t(0.5, - 0.5) * s0_in_copy + qcs::complex_t(0.5, 0.5) * s1_in_copy;
 
-            // break unitarity intentionally: a hack to prevent amplitude attenuation
-            auto const a = M_SQRT1_2 * (s0_in + s1_in);
-            auto const b = M_SQRT1_2 * multiply_i(s0_in - s1_in);
+            auto const a = 0.5 * (s0_in + s1_in);
+            auto const b = 0.5 * multiply_i(s0_in - s1_in);
             s0_out = a + b;
             s1_out = a - b;
         }
@@ -562,9 +561,8 @@ namespace gate {
                             qcs::complex_t const& s1_in,
                             qcs::complex_t& s0_out,
                             qcs::complex_t& s1_out) const {
-            // break unitarity intentionally: a hack to prevent amplitude attenuation
-            auto const a = M_SQRT1_2 * (s0_in + s1_in);
-            auto const b = -M_SQRT1_2 * multiply_i(s0_in - s1_in);
+            auto const a = 0.5 * (s0_in + s1_in);
+            auto const b = - 0.5 * multiply_i(s0_in - s1_in);
             s0_out = a + b;
             s1_out = a - b;
         }
@@ -666,8 +664,10 @@ namespace gate {
             qcs::float_t const theta_2 = 0.5 * theta;
             cos_theta_2 = cos(theta_2);
             sin_theta_2 = sin(theta_2);
-            exp_i_phi = qcs::complex_t(cos(phi), sin(phi));
-            exp_minus_i_phi = qcs::complex_t(cos(phi), -sin(phi));
+            qcs::float_t cos_phi = cos(phi);
+            qcs::float_t sin_phi = sin(phi);
+            exp_i_phi = qcs::complex_t(cos_phi, sin_phi);
+            exp_minus_i_phi = qcs::complex_t(cos_phi, -sin_phi);
         }
 
         __device__ void apply(qcs::complex_t const& s0_in,
@@ -676,8 +676,8 @@ namespace gate {
                             qcs::complex_t& s1_out) const {
             auto const s0_in_copy = s0_in;
             auto const s1_in_copy = s1_in;
-            s0_out = cos_theta_2 * s0_in_copy + sin_theta_2 * multiply_i_real(exp_minus_i_phi * s1_in_copy, 1.0);
-            s1_out = multiply_i_m(exp_i_phi * s0_in_copy) * sin_theta_2 + cos_theta_2 * s1_in_copy;
+            s0_out = cos_theta_2 * s0_in_copy + multiply_i_real(exp_minus_i_phi * s1_in_copy, - sin_theta_2);
+            s1_out = multiply_i_real(exp_i_phi * s0_in_copy, - sin_theta_2) + cos_theta_2 * s1_in_copy;
         }
     };
 
@@ -712,12 +712,12 @@ namespace gate {
         static constexpr unsigned int num_target_qubits = 2;
 
         qcs::float_t cos_theta_2;
-        qcs::float_t sin_theta_2;
+        qcs::float_t m_sin_theta_2;
 
         rxx(double theta) {
             qcs::float_t const theta_2 = 0.5 * theta;
             cos_theta_2 = cos(theta_2);
-            sin_theta_2 = sin(theta_2);
+            m_sin_theta_2 = - sin(theta_2);
         }
 
         __device__ void apply(qcs::complex_t const& s00_in,
@@ -733,10 +733,10 @@ namespace gate {
             auto const s10_in_copy = s10_in;
             auto const s11_in_copy = s11_in;
 
-            s00_out = cos_theta_2 * s00_in_copy + multiply_i_real(s11_in_copy, sin_theta_2);
-            s01_out = cos_theta_2 * s01_in_copy + multiply_i_real(s10_in_copy, sin_theta_2);
-            s10_out = cos_theta_2 * s10_in_copy + multiply_i_real(s01_in_copy, sin_theta_2);
-            s11_out = cos_theta_2 * s11_in_copy + multiply_i_real(s00_in_copy, sin_theta_2);
+            s00_out = cos_theta_2 * s00_in_copy + multiply_i_real(s11_in_copy, m_sin_theta_2);
+            s01_out = cos_theta_2 * s01_in_copy + multiply_i_real(s10_in_copy, m_sin_theta_2);
+            s10_out = cos_theta_2 * s10_in_copy + multiply_i_real(s01_in_copy, m_sin_theta_2);
+            s11_out = cos_theta_2 * s11_in_copy + multiply_i_real(s00_in_copy, m_sin_theta_2);
         }
     };
 
@@ -765,10 +765,10 @@ namespace gate {
             auto const s10_in_copy = s10_in;
             auto const s11_in_copy = s11_in;
 
-            s00_out = cos_theta_2 * s00_in_copy + multiply_i(s11_in_copy) * sin_theta_2;
-            s01_out = cos_theta_2 * s01_in_copy + multiply_i_real(s10_in_copy, sin_theta_2);
-            s10_out = cos_theta_2 * s10_in_copy + multiply_i_real(s01_in_copy, sin_theta_2);
-            s11_out = cos_theta_2 * s11_in_copy + multiply_i(s00_in_copy) * sin_theta_2;
+            s00_out = cos_theta_2 * s00_in_copy + multiply_i_real(s11_in_copy, sin_theta_2);
+            s01_out = cos_theta_2 * s01_in_copy + multiply_i_real(s10_in_copy, - sin_theta_2);
+            s10_out = cos_theta_2 * s10_in_copy + multiply_i_real(s01_in_copy, - sin_theta_2);
+            s11_out = cos_theta_2 * s11_in_copy + multiply_i_real(s00_in_copy, sin_theta_2);
         }
     };
 
@@ -797,9 +797,9 @@ namespace gate {
             auto const s10_in_copy = s10_in;
             auto const s11_in_copy = s11_in;
 
-            s00_out = cos_theta_2 * s00_in_copy + multiply_i_real(s10_in_copy, sin_theta_2);
+            s00_out = cos_theta_2 * s00_in_copy + multiply_i_real(s10_in_copy, - sin_theta_2);
             s01_out = cos_theta_2 * s01_in_copy + multiply_i(s11_in_copy) * sin_theta_2;
-            s10_out = cos_theta_2 * s10_in_copy + multiply_i_real(s00_in_copy, sin_theta_2);
+            s10_out = cos_theta_2 * s10_in_copy + multiply_i_real(s00_in_copy, - sin_theta_2);
             s11_out = cos_theta_2 * s11_in_copy + multiply_i(s01_in_copy) * sin_theta_2;
         }
     };
@@ -832,8 +832,8 @@ namespace gate {
             auto const s10_in_copy = s10_in;
 
             // s00_out = s00_in;
-            s01_out = cos_theta_2 * s01_in_copy + multiply_i_real(exp_i_beta * s10_in_copy, sin_theta_2);
-            s10_out = multiply_i_m(exp_minus_i_beta * s01_in_copy) * sin_theta_2 + cos_theta_2 * s10_in_copy;
+            s01_out = cos_theta_2 * s01_in_copy + multiply_i_real(exp_minus_i_beta * s10_in_copy, - sin_theta_2);
+            s10_out = multiply_i_real(exp_i_beta * s01_in_copy, - sin_theta_2) + cos_theta_2 * s10_in_copy;
             // s11_out = s11_in;
         }
     };
@@ -865,10 +865,10 @@ namespace gate {
             auto const s00_in_copy = s00_in;
             auto const s11_in_copy = s11_in;
 
-            s00_out = cos_theta_2 * s00_in_copy + multiply_i_real(exp_i_beta * s11_in_copy, sin_theta_2);
+            s00_out = cos_theta_2 * s00_in_copy + multiply_i_real(exp_minus_i_beta * s11_in_copy, - sin_theta_2);
             // s01_out = s01_in;
             // s10_out = s10_in;
-            s11_out = multiply_i_m(exp_minus_i_beta * s00_in_copy) * sin_theta_2 + cos_theta_2 * s11_in_copy;
+            s11_out = multiply_i_real(exp_i_beta * s00_in_copy, - sin_theta_2) + cos_theta_2 * s11_in_copy;
         }
     };
 
@@ -883,10 +883,13 @@ namespace gate {
                             qcs::complex_t& s01_out,
                             qcs::complex_t& s10_out,
                             qcs::complex_t& s11_out) const {
+            auto const s10_in_copy = s10_in;
+            auto const s11_in_copy = s11_in;
+            auto const s01_in_copy = s01_in;
             // s00_out = s00_in;
-            s01_out = s10_in;
-            s10_out = s11_in;
-            s11_out = s01_in;
+            s01_out = s11_in_copy;
+            s10_out = s01_in_copy;
+            s11_out = s10_in_copy;
         }
     };
 
@@ -901,10 +904,14 @@ namespace gate {
                             qcs::complex_t& s01_out,
                             qcs::complex_t& s10_out,
                             qcs::complex_t& s11_out) const {
-            s00_out = M_SQRT1_2 * s01_in + multiply_i(s11_in) * M_SQRT1_2;
-            s01_out = M_SQRT1_2 * s00_in + multiply_i_real(s10_in, M_SQRT1_2);
-            s10_out = multiply_i(s01_in) * M_SQRT1_2 + M_SQRT1_2 * s11_in;
-            s11_out = multiply_i_real(s00_in, M_SQRT1_2) + M_SQRT1_2 * s10_in;
+            auto const s00_in_copy = s00_in;
+            auto const s01_in_copy = s01_in;
+            auto const s10_in_copy = s10_in;
+            auto const s11_in_copy = s11_in;
+            s00_out = M_SQRT1_2 * (s01_in_copy + multiply_i(s11_in_copy));
+            s01_out = M_SQRT1_2 * (s00_in_copy + multiply_i_m(s10_in_copy));
+            s10_out = M_SQRT1_2 * (multiply_i(s01_in_copy) + s11_in_copy);
+            s11_out = M_SQRT1_2 * (multiply_i_m(s00_in_copy) + s10_in_copy);
         }
     };
 
@@ -927,14 +934,17 @@ namespace gate {
                             qcs::complex_t& s101_out,
                             qcs::complex_t& s110_out,
                             qcs::complex_t& s111_out) const {
+            auto const s111_in_copy = s111_in;
+            auto const s101_in_copy = s101_in;
+            auto const s011_in_copy = s011_in;
             // s000_out = s000_in;
             // s001_out = s001_in;
             // s010_out = s010_in;
-            s011_out = multiply_i_m(s111_in);
+            s011_out = multiply_i_m(s111_in_copy);
             // s100_out = s100_in;
-            s101_out = -s101_in;
+            s101_out = - s101_in_copy;
             // s110_out = s110_in;
-            s111_out = multiply_i(s011_in);
+            s111_out = multiply_i(s011_in_copy);
         }
     };
 
@@ -973,22 +983,26 @@ namespace gate {
                             qcs::complex_t& s1101_out,
                             qcs::complex_t& s1110_out,
                             qcs::complex_t& s1111_out) const {
+            auto const s0011_in_copy = s0011_in;
+            auto const s1111_in_copy = s1111_in;
+            auto const s1011_in_copy = s1011_in;
+            auto const s0111_in_copy = s0111_in;
             // s0000_out = s0000_in;
             // s0001_out = s0001_in;
             // s0010_out = s0010_in;
-            s0011_out = multiply_i(s0011_in);
+            s0011_out = multiply_i(s0011_in_copy);
             // s0100_out = s0100_in;
             // s0101_out = s0101_in;
             // s0110_out = s0110_in;
-            s0111_out = s1111_in;
+            s0111_out = s1111_in_copy;
             // s1000_out = s1000_in;
             // s1001_out = s1001_in;
             // s1010_out = s1010_in;
-            s1011_out = multiply_i_m(s1011_in);
+            s1011_out = multiply_i_m(s1011_in_copy);
             // s1100_out = s1100_in;
             // s1101_out = s1101_in;
             // s1110_out = s1110_in;
-            s1111_out = -s0111_in;
+            s1111_out = - s0111_in_copy;
         }
     };
 
