@@ -1565,8 +1565,7 @@ int target_qubit_num_begin;
 int target_qubit_num_end;
 
 cudaStream_t stream;
-cudaEvent_t event_1;
-cudaEvent_t event_2;
+std::vector<cudaEvent_t> event_list;
 
 uint64_t num_states;
 int num_qubits_local;
@@ -1655,8 +1654,8 @@ void setup() {
     log_block_size_max = 9;
 
     ATLC_CHECK_CUDA(cudaStreamCreate, &stream);
-    ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &event_1, cudaEventDefault);
-    ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &event_2, cudaEventDefault);
+    // ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &event_1, cudaEventDefault);
+    // ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &event_2, cudaEventDefault);
 
     block_size_max = 1 << log_block_size_max;
 
@@ -1826,8 +1825,6 @@ void initialize_use_curand() {
     MPI_Barrier(MPI_COMM_WORLD);
     if (proc_num == 0) { fprintf(stderr, "[info] generating random state\n"); }
     curandGenerator_t rng_device;
-
-    ATLC_CHECK_CUDA(cudaEventRecord, event_1, stream);
 
     {
         int const log_num_rand_areas = atlc::log2_int(num_rand_areas);
@@ -2535,11 +2532,56 @@ int main() {
 
 void dispose() {
     free_memory();
-    ATLC_CHECK_CUDA(cudaEventDestroy, event_1);
-    ATLC_CHECK_CUDA(cudaEventDestroy, event_2);
+    for(cudaEvent_t event: event_list) {
+        ATLC_CHECK_CUDA(cudaEventDestroy, event);
+    }
     ATLC_CHECK_CUDA(cudaStreamDestroy, stream);
     MPI_Finalize();
 };
+
+int event_create() {
+    int const event_num = event_list.size();
+    cudaEvent_t event;
+    ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &event, cudaEventDefault);
+    this->event_list.push_back(event);
+    return event_num;
+}
+
+void event_record(int const event_num) {
+    cudaEvent_t const event = event_list[event_num];
+    ATLC_CHECK_CUDA(cudaEventRecordWithFlags, event, stream, cudaEventDefault);
+}
+
+double event_get_elapsed_time(int const start_event_num, int const stop_event_num) {
+    cudaEvent_t const start = event_list[start_event_num];
+    cudaEvent_t const stop = event_list[stop_event_num];
+
+    cudaError_t q;
+
+    q = cudaEventQuery(start);
+    if (q == cudaErrorNotReady) {
+        ATLC_CHECK_CUDA(cudaEventSynchronize, start);
+    } else if (q != cudaSuccess) {
+        throw std::runtime_error(cudaGetErrorString(q));
+    }
+
+    q = cudaEventQuery(stop);
+    if (q == cudaErrorNotReady) {
+        ATLC_CHECK_CUDA(cudaEventSynchronize, stop);
+    } else if (q != cudaSuccess) {
+        throw std::runtime_error(cudaGetErrorString(q));
+    }
+
+    float elapsed_ms = 0.0f;
+    ATLC_CHECK_CUDA(cudaEventElapsedTime, &elapsed_ms, start, stop); 
+
+    float elapsed_ms_global;
+
+    MPI_Allreduce(&elapsed_ms, &elapsed_ms_global, 1, MPI_FLOAT, MPI_MAX, MPI_COMM_WORLD);
+
+    return elapsed_ms_global * 1e-3;
+
+}
 
 }; /* simulator_core */
 
@@ -2808,6 +2850,18 @@ void simulator::save_statevector(char const* const outfn) {
     this->core->save_statevector(outfn);
 }
 
+int simulator::event_create() {
+    return core->event_create();
+}
+
+void simulator::event_record(int event_num) {
+    core->event_record(event_num);
+}
+
+double simulator::event_get_elapsed_time(int const start_event_num, int const stop_event_num) {
+    return core->event_get_elapsed_time(start_event_num, stop_event_num);
+}
+
 } /* qcs */
 
 int main(int argc, char** argv)
@@ -2838,19 +2892,32 @@ int main(int argc, char** argv)
 
     sim.allocate_memory();
 
-    for (int i=0; i<num_samples; i++) {
+    int const event_1 = sim.event_create();
+    int const event_2 = sim.event_create();
+
+    for (int sample_num = 0; sample_num < num_samples; sample_num++) {
+
+        sim.event_record(event_1);
 
         circuit_run(&sim);
 
-        fprintf(stdout, "clbits: %s\n", sim.get_clbits_string().c_str());
+        sim.event_record(event_2);
 
-        if (i != num_samples - 1) {
+        double const elapsed_time = sim.event_get_elapsed_time(event_1, event_2);
+
+        if (sim.get_proc_num() == 0) {
+            
+            fprintf(stdout, "{\"sample_num\": %d, \"clbits\": \"%s\", \"elapsed_time\": %.18g}\n", sample_num, sim.get_clbits_string().c_str(), elapsed_time);
+            fflush(stdout);
+        }
+
+        if (sample_num != num_samples - 1) {
             sim.set_zero_state();
             sim.reset_clbits();
         }
     }
 
-    sim.save_statevector("statevector_output.bin");
+    // sim.save_statevector("statevector_output.bin");
 
     return 0;
 }

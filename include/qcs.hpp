@@ -75,5 +75,9 @@ namespace qcs {
         int read(int clbit_num);
 
         void save_statevector(char const* const outfn);
+
+        int event_create();
+        void event_record(int event_num);
+        double event_get_elapsed_time(int const start_event_num, int const stop_event_num);
     };
 }
