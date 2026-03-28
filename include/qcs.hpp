@@ -20,8 +20,10 @@ namespace qcs {
 
         int get_num_procs();
         int get_proc_num();
+        int get_num_qubits() const;
 
         void set_num_qubits(int num_qubits);
+        void set_mapping(std::vector<int> const& perm_p2l);
         void set_num_clbits(int num_clbits);
         std::vector<bool> const& get_clbits() const;
         std::vector<bool>& get_clbits();

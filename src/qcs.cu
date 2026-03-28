@@ -21,6 +21,7 @@
 #include <unordered_set>
 #include <tuple>
 #include <type_traits>
+#include <optional>
 
 #include <mpi.h>
 #include <cuda_runtime.h>
@@ -1553,6 +1554,7 @@ int nccl_rank;
 
 std::vector<int> perm_p2l;
 std::vector<int> perm_l2p;
+std::optional<std::vector<int>> initial_perm_p2l_opt;
 
 int num_samples;
 unsigned int rng_seed;
@@ -1714,6 +1716,19 @@ void allocate_memory(int num_qubits) {
     for(int qubit_num=0; qubit_num<num_qubits; qubit_num++) {
         perm_p2l[qubit_num] = qubit_num;
         perm_l2p[qubit_num] = qubit_num;
+    }
+
+    if (initial_perm_p2l_opt.has_value()) {
+        std::vector<int> const& initial_perm_p2l = initial_perm_p2l_opt.value();
+        if ((int)initial_perm_p2l.size() != num_qubits) {
+            throw std::runtime_error(atlc::format("mapping size %d does not match num_qubits %d", (int)initial_perm_p2l.size(), num_qubits));
+        }
+
+        perm_p2l = initial_perm_p2l;
+        for (int physical_qubit_num = 0; physical_qubit_num < num_qubits; physical_qubit_num++) {
+            int const logical_qubit_num = perm_p2l[physical_qubit_num];
+            perm_l2p[logical_qubit_num] = physical_qubit_num;
+        }
     }
 
     num_states = UINT64_C(1) << num_qubits;
@@ -2614,8 +2629,34 @@ int simulator::get_num_procs() {
     return core->num_procs;
 }
 
+int simulator::get_num_qubits() const {
+    return this->num_qubits;
+}
+
 void simulator::set_num_qubits(int num_qubits) {
     this->num_qubits = num_qubits;
+}
+
+void simulator::set_mapping(std::vector<int> const& perm_p2l) {
+    if (this->num_qubits <= 0) {
+        throw std::runtime_error("set_num_qubits must be called before set_mapping");
+    }
+    if ((int)perm_p2l.size() != this->num_qubits) {
+        throw std::runtime_error(atlc::format("mapping size %d does not match num_qubits %d", (int)perm_p2l.size(), this->num_qubits));
+    }
+
+    std::vector<bool> used(this->num_qubits, false);
+    for (int logical_qubit_num : perm_p2l) {
+        if (logical_qubit_num < 0 || logical_qubit_num >= this->num_qubits) {
+            throw std::runtime_error(atlc::format("mapping value %d is out of range [0, %d)", logical_qubit_num, this->num_qubits));
+        }
+        if (used[logical_qubit_num]) {
+            throw std::runtime_error(atlc::format("mapping value %d appears multiple times", logical_qubit_num));
+        }
+        used[logical_qubit_num] = true;
+    }
+
+    core->initial_perm_p2l_opt = perm_p2l;
 }
 
 void simulator::set_num_clbits(int num_clbits) {
@@ -2865,6 +2906,44 @@ double simulator::event_get_elapsed_time(int const start_event_num, int const st
 
 } /* qcs */
 
+static std::vector<int> parse_mapping_csv(std::string const& mapping_text) {
+    if (mapping_text.empty()) {
+        throw std::runtime_error("mapping string must not be empty");
+    }
+
+    std::vector<int> mapping;
+    std::stringstream ss(mapping_text);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+        if (token.empty()) {
+            throw std::runtime_error("mapping contains an empty entry");
+        }
+        mapping.push_back(std::stoi(token));
+    }
+
+    return mapping;
+}
+
+static std::vector<int> invert_mapping(std::vector<int> const& perm_p2l, int const num_qubits) {
+    if ((int)perm_p2l.size() != num_qubits) {
+        throw std::runtime_error(atlc::format("mapping size %d does not match num_qubits %d", (int)perm_p2l.size(), num_qubits));
+    }
+
+    std::vector<int> perm_l2p(num_qubits, -1);
+    for (int physical_qubit_num = 0; physical_qubit_num < num_qubits; physical_qubit_num++) {
+        int const logical_qubit_num = perm_p2l[physical_qubit_num];
+        if (logical_qubit_num < 0 || logical_qubit_num >= num_qubits) {
+            throw std::runtime_error(atlc::format("mapping value %d is out of range [0, %d)", logical_qubit_num, num_qubits));
+        }
+        if (perm_l2p[logical_qubit_num] != -1) {
+            throw std::runtime_error(atlc::format("mapping value %d appears multiple times", logical_qubit_num));
+        }
+        perm_l2p[logical_qubit_num] = physical_qubit_num;
+    }
+
+    return perm_l2p;
+}
+
 int main(int argc, char** argv)
 {
     qcs::simulator sim;
@@ -2875,6 +2954,8 @@ int main(int argc, char** argv)
     options.positional_help("USER_CIRCUIT_SO");
     options.add_options()
         ("s,num-samples", "Number of measurement samples", cxxopts::value<int>()->default_value("1"))
+        ("mapping", "Comma-separated physical-to-logical qubit mapping", cxxopts::value<std::string>())
+        ("r,reversed-mapping", "Reverse the qubit mapping (swap perm_p2l/perm_l2p)")
         ("user-circuit", "Path to user circuit shared object", cxxopts::value<std::string>())
         ("h,help", "Print usage");
     options.parse_positional({"user-circuit"});
@@ -2910,6 +2991,21 @@ int main(int argc, char** argv)
     auto circuit_run = reinterpret_cast<void(*)(qcs::simulator*)>(dlsym(usercircuit_dl, "circuit_run"));
 
     circuit_init(&sim);
+
+    std::vector<int> mapping;
+    if (parsed_options.count("mapping") > 0) {
+        mapping = parse_mapping_csv(parsed_options["mapping"].as<std::string>());
+    } else {
+        mapping.resize(sim.get_num_qubits());
+        for (int qubit_num = 0; qubit_num < sim.get_num_qubits(); qubit_num++) {
+            mapping[qubit_num] = qubit_num;
+        }
+    }
+
+    if (parsed_options.count("reversed-mapping") > 0) {
+        mapping = invert_mapping(mapping, sim.get_num_qubits());
+    }
+    sim.set_mapping(mapping);
 
     sim.allocate_memory();
 
