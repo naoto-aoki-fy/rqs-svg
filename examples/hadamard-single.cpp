@@ -1,7 +1,9 @@
 #include <qcs.hpp>
+#include <cstdlib>
+#include <stdexcept>
 
 static unsigned int num_qubits;
-static unsigned int num_clbits;
+static constexpr unsigned int num_clbits = 0;
 
 extern "C"
 void circuit_init(qcs::simulator* sim) {
@@ -15,22 +17,10 @@ void circuit_init(qcs::simulator* sim) {
         throw std::runtime_error("strtoul on NUM_QUBITS failed");
     }
     sim->set_num_qubits(num_qubits);
-    num_clbits = num_qubits;
     sim->set_num_clbits(num_clbits);
 }
 
 extern "C"
 void circuit_run(qcs::simulator* sim) {
-
     sim->gate_h({0}, {}, {});
-
-    for(int qubit_num = 1; qubit_num < num_qubits; qubit_num++)
-    {
-        sim->gate_x({qubit_num}, {}, {0});
-    }
-
-    for (int qubit_num = 0; qubit_num < num_qubits; qubit_num++) {
-        sim->measure(qubit_num, qubit_num);
-    }
-
 }
