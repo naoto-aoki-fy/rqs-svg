@@ -2902,6 +2902,46 @@ double simulator::event_get_elapsed_time(int const start_event_num, int const st
     return core->event_get_elapsed_time(start_event_num, stop_event_num);
 }
 
+int simulator::fprintf_master(FILE *fp, const char *format, ...)
+{
+    int const rank = get_proc_num();
+    if (rank!=0) return 0;
+
+    int result = 0;
+    va_list ap;
+
+    va_start(ap, format);
+    result = vfprintf(fp, format, ap);
+    va_end(ap);
+
+    return result;
+}
+
+int simulator::fprintf_all(FILE *fp, const char *format, ...)
+{   
+    int result = 0;
+    va_list ap;
+
+    va_start(ap, format);
+    result = vfprintf(fp, format, ap);
+    va_end(ap);
+
+    return result;
+}
+
+int simulator::fflush_all(FILE *fp)
+{
+    return fflush(fp);
+}
+
+int simulator::fflush_master(FILE *fp)
+{
+    int const rank = get_proc_num();
+    if (rank!=0) return 0;
+
+    return fflush(fp);
+}
+
 } /* qcs */
 
 static std::vector<int> parse_mapping_csv(std::string const& mapping_text) {
@@ -3020,11 +3060,8 @@ int main(int argc, char** argv)
 
         double const elapsed_time = sim.event_get_elapsed_time(event_1, event_2);
 
-        if (sim.get_proc_num() == 0) {
-            
-            fprintf(stdout, "{\"sample_num\": %d, \"clbits\": \"%s\", \"elapsed_time\": %.18g}\n", sample_num, sim.get_clbits_string().c_str(), elapsed_time);
-            fflush(stdout);
-        }
+        sim.fprintf_master(stdout, "{\"sample_num\": %d, \"clbits\": \"%s\", \"elapsed_time\": %.18g}\n", sample_num, sim.get_clbits_string().c_str(), elapsed_time);
+        sim.fflush_master(stdout);
 
         if (sample_num != num_samples - 1) {
             sim.set_zero_state();

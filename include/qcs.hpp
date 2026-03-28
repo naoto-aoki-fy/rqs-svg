@@ -81,5 +81,15 @@ namespace qcs {
         int event_create();
         void event_record(int event_num);
         double event_get_elapsed_time(int const start_event_num, int const stop_event_num);
+
+        __attribute__((format(printf, 3, 4)))
+        int fprintf_master(FILE *fp, const char *format, ...);
+
+        __attribute__((format(printf, 3, 4)))
+        int fprintf_all(FILE *fp, const char *format, ...);
+
+        int fflush_master(FILE* stream);
+
+        int fflush_all(FILE* stream);
     };
 }
