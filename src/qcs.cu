@@ -21,7 +21,6 @@
 #include <unordered_set>
 #include <tuple>
 #include <type_traits>
-#include <optional>
 
 #include <mpi.h>
 #include <cuda_runtime.h>
@@ -1554,7 +1553,7 @@ int nccl_rank;
 
 std::vector<int> perm_p2l;
 std::vector<int> perm_l2p;
-std::optional<std::vector<int>> initial_perm_p2l_opt;
+std::vector<int> initial_perm_p2l;
 
 int num_samples;
 unsigned int rng_seed;
@@ -1718,8 +1717,7 @@ void allocate_memory(int num_qubits) {
         perm_l2p[qubit_num] = qubit_num;
     }
 
-    if (initial_perm_p2l_opt.has_value()) {
-        std::vector<int> const& initial_perm_p2l = initial_perm_p2l_opt.value();
+    if (!initial_perm_p2l.empty()) {
         if ((int)initial_perm_p2l.size() != num_qubits) {
             throw std::runtime_error(atlc::format("mapping size %d does not match num_qubits %d", (int)initial_perm_p2l.size(), num_qubits));
         }
@@ -2656,7 +2654,7 @@ void simulator::set_mapping(std::vector<int> const& perm_p2l) {
         used[logical_qubit_num] = true;
     }
 
-    core->initial_perm_p2l_opt = perm_p2l;
+    core->initial_perm_p2l = perm_p2l;
 }
 
 void simulator::set_num_clbits(int num_clbits) {
