@@ -2994,6 +2994,7 @@ int main(int argc, char** argv)
         ("s,num-samples", "Number of measurement samples", cxxopts::value<int>()->default_value("1"))
         ("mapping", "Comma-separated physical-to-logical qubit mapping", cxxopts::value<std::string>())
         ("r,reversed-mapping", "Reverse the qubit mapping (swap perm_p2l/perm_l2p)")
+        ("output-statevector", "Write final statevector to the specified file", cxxopts::value<std::string>())
         ("user-circuit", "Path to user circuit shared object", cxxopts::value<std::string>())
         ("h,help", "Print usage");
     options.parse_positional({"user-circuit"});
@@ -3011,6 +3012,9 @@ int main(int argc, char** argv)
 
     std::string const usercircuit_so_path = parsed_options["user-circuit"].as<std::string>();
     int const num_samples = parsed_options["num-samples"].as<int>();
+    std::string const output_statevector_path = parsed_options.count("output-statevector") > 0
+        ? parsed_options["output-statevector"].as<std::string>()
+        : "";
     if (num_samples <= 0) {
         throw std::runtime_error("num_samples must be greater than 0");
     }
@@ -3069,7 +3073,9 @@ int main(int argc, char** argv)
         }
     }
 
-    // sim.save_statevector("statevector_output.bin");
+    if (!output_statevector_path.empty()) {
+        sim.save_statevector(output_statevector_path.c_str());
+    }
 
     return 0;
 }

@@ -22,6 +22,9 @@ You can execute the built simulator via:
 
 ```
 mpirun -np (NUM_GPUS) ./qcs [--num-samples NUM_SAMPLES|-s NUM_SAMPLES] user_circuit.so
+
+# Save the final statevector to a binary file
+mpirun -np (NUM_GPUS) ./qcs --output-statevector data.bin user_circuit.so
 ```
 
 ## Acknowledgments
