@@ -43,6 +43,7 @@
 #include <atlc/check_nccl.hpp>
 
 #include <qcs.hpp>
+#include <cxxopts.hpp>
 
 namespace qcs {
 
@@ -2870,12 +2871,32 @@ int main(int argc, char** argv)
     sim.setup();
     ATLC_DEFER_FUNC(sim.dispose);
 
-    if (argc <= 1) { throw std::runtime_error("argv[1] is not set."); }
-    char const* const usercircuit_so_path = argv[1];
-    int num_samples = 1;
-    if (argc >= 3) { num_samples = atoi(argv[2]); }
+    cxxopts::Options options("qcs", "GPU-accelerated quantum circuit simulator");
+    options.positional_help("USER_CIRCUIT_SO");
+    options.add_options()
+        ("s,num-samples", "Number of measurement samples", cxxopts::value<int>()->default_value("1"))
+        ("user-circuit", "Path to user circuit shared object", cxxopts::value<std::string>())
+        ("h,help", "Print usage");
+    options.parse_positional({"user-circuit"});
 
-    char const* const usercircuit_so_abspath = realpath(usercircuit_so_path, NULL);
+    auto parsed_options = options.parse(argc, argv);
+
+    if (parsed_options.count("help") > 0) {
+        fprintf(stdout, "%s\n", options.help().c_str());
+        return 0;
+    }
+
+    if (parsed_options.count("user-circuit") == 0) {
+        throw std::runtime_error("user circuit shared object path is required");
+    }
+
+    std::string const usercircuit_so_path = parsed_options["user-circuit"].as<std::string>();
+    int const num_samples = parsed_options["num-samples"].as<int>();
+    if (num_samples <= 0) {
+        throw std::runtime_error("num_samples must be greater than 0");
+    }
+
+    char const* const usercircuit_so_abspath = realpath(usercircuit_so_path.c_str(), NULL);
     if (usercircuit_so_abspath == NULL) {
         throw std::runtime_error("realpath returned NULL");
     }

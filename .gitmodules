@@ -4,3 +4,6 @@
 [submodule "nvccoptions"]
 	path = nvccoptions
 	url = https://github.com/naoto-aoki-fy/nvccoptions.git
+[submodule "cxxopts"]
+	path = cxxopts
+	url = https://github.com/jarro2783/cxxopts.git

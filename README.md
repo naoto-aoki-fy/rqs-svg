@@ -21,7 +21,7 @@ g++ -fPIC -shared -I(DIR_QCS_HPP) -std=c++11 user_circuit.cpp -o user_circuit.so
 You can execute the built simulator via:
 
 ```
-mpirun -np (NUM_GPUS) ./qcs user_circuit.so [num_samples]
+mpirun -np (NUM_GPUS) ./qcs [--num-samples NUM_SAMPLES|-s NUM_SAMPLES] user_circuit.so
 ```
 
 ## Acknowledgments
