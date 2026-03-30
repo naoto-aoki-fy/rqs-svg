@@ -2170,6 +2170,13 @@ void update_measured_list() {
     measured_1_qubit_num_logical_list = measured_1_qubit_num_logical_list_copy;
 }
 
+void clear_measurement_state() {
+    measured_0_qubit_num_logical_list.clear();
+    measured_1_qubit_num_logical_list.clear();
+    measured_0_qubit_num_logical_list_copy.clear();
+    measured_1_qubit_num_logical_list_copy.clear();
+}
+
 void save_statevector(char const* const outfn) {
 
     MPI_Barrier(MPI_COMM_WORLD);
@@ -2875,6 +2882,10 @@ void simulator::reset_clbits() {
     }
 }
 
+void simulator::reset_measurement_state() {
+    core->clear_measurement_state();
+}
+
 void simulator::reinitialize_mapping() {
     core->reinitialize_mapping();
 }
@@ -3073,6 +3084,7 @@ int main(int argc, char** argv)
             sim.reinitialize_mapping();
             sim.set_zero_state();
             sim.reset_clbits();
+            sim.reset_measurement_state();
         }
     }
 
