@@ -13,7 +13,7 @@ make qcs      # build standalone simulator
 ## Compiling Circuit
 
 ```
-g++ -fPIC -shared -I(DIR_QCS_HPP) -std=c++11 user_circuit.cpp -o user_circuit.so
+g++ -fPIC -shared -I(DIR_QCS_HPP) -std=c++17 user_circuit.cpp -o user_circuit.so
 ```
 
 ## Running
