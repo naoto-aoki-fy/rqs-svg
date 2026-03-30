@@ -1558,7 +1558,6 @@ std::vector<int> initial_perm_p2l;
 int num_samples;
 unsigned int rng_seed;
 std::mt19937_64 engine;
-int num_rand_areas_times_num_procs;
 
 int log_num_procs;
 int log_block_size_max;
@@ -1622,7 +1621,7 @@ bool proc_num_control_condition;
 simulator_core() :
 num_qubits(0),
 use_unified_memory(false),
-num_rand_areas_times_num_procs(8)
+num_rand_areas(1)
 {
 }
 
@@ -1631,11 +1630,6 @@ void setup() {
     MPI_Init(NULL, NULL);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
     MPI_Comm_rank(MPI_COMM_WORLD, &proc_num);
-
-    if (num_rand_areas_times_num_procs < num_procs) {
-        throw std::runtime_error(atlc::format("num_rand_areas_times_num_procs %d < num_procs %d", num_rand_areas_times_num_procs, num_procs));
-    }
-    num_rand_areas = num_rand_areas_times_num_procs / num_procs;
 
     atlc::group_by_hostname(proc_num, num_procs, my_hostname, my_node_number, my_node_local_rank, node_count);
     // fprintf(stderr, "[debug] Rank %d on host %s -> assigned node number: %d, local node rank: %d (total nodes: %d)\n", proc_num, my_hostname.c_str(), my_node_number, my_node_local_rank, node_count);
