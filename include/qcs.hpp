@@ -36,6 +36,7 @@ namespace qcs {
         void set_entangled_state();
         void set_random_state();
         void reset_clbits();
+        void reinitialize_mapping();
 
         void gate_global_phase(double theta, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);
         void gate_h(std::vector<int> target_qubit_num_list, std::vector<int> negctrl_qubit_num_list, std::vector<int> ctrl_qubit_num_list);

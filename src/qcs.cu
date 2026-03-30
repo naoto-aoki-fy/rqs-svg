@@ -1678,6 +1678,26 @@ void setup() {
 
 } /* setup */
 
+void reinitialize_mapping() {
+
+    if (initial_perm_p2l.empty()) {
+        for(int qubit_num=0; qubit_num<num_qubits; qubit_num++) {
+            perm_p2l[qubit_num] = qubit_num;
+            perm_l2p[qubit_num] = qubit_num;
+        }
+    } else {
+        if ((int)initial_perm_p2l.size() != num_qubits) {
+            throw std::runtime_error(atlc::format("mapping size %d does not match num_qubits %d", (int)initial_perm_p2l.size(), num_qubits));
+        }
+
+        perm_p2l = initial_perm_p2l;
+        for (int physical_qubit_num = 0; physical_qubit_num < num_qubits; physical_qubit_num++) {
+            int const logical_qubit_num = perm_p2l[physical_qubit_num];
+            perm_l2p[logical_qubit_num] = physical_qubit_num;
+        }
+    }
+}
+
 void allocate_memory(int num_qubits) {
 
     std::vector<std::string> exmes_list;
@@ -1706,22 +1726,7 @@ void allocate_memory(int num_qubits) {
     perm_p2l.resize(num_qubits);
     perm_l2p.resize(num_qubits);
 
-    for(int qubit_num=0; qubit_num<num_qubits; qubit_num++) {
-        perm_p2l[qubit_num] = qubit_num;
-        perm_l2p[qubit_num] = qubit_num;
-    }
-
-    if (!initial_perm_p2l.empty()) {
-        if ((int)initial_perm_p2l.size() != num_qubits) {
-            throw std::runtime_error(atlc::format("mapping size %d does not match num_qubits %d", (int)initial_perm_p2l.size(), num_qubits));
-        }
-
-        perm_p2l = initial_perm_p2l;
-        for (int physical_qubit_num = 0; physical_qubit_num < num_qubits; physical_qubit_num++) {
-            int const logical_qubit_num = perm_p2l[physical_qubit_num];
-            perm_l2p[logical_qubit_num] = physical_qubit_num;
-        }
-    }
+    reinitialize_mapping();
 
     num_states = UINT64_C(1) << num_qubits;
 
@@ -1731,7 +1736,6 @@ void allocate_memory(int num_qubits) {
 
     if (use_unified_memory) {
         ATLC_CHECK_CUDA(cudaMallocManaged, &state_data_device, num_states_local * sizeof(*state_data_device));
-        ATLC_CHECK_CUDA(cudaMemAdvise, state_data_device, num_states_local * sizeof(*state_data_device), cudaMemAdviseSetPreferredLocation, gpu_id);
     } else {
         ATLC_CHECK_CUDA(cudaMallocAsync, &state_data_device, num_states_local * sizeof(*state_data_device), stream);
     }
@@ -2871,6 +2875,10 @@ void simulator::reset_clbits() {
     }
 }
 
+void simulator::reinitialize_mapping() {
+    core->reinitialize_mapping();
+}
+
 std::string simulator::get_clbits_string() const {
     std::string clbits_string;
     clbits_string.reserve(clbits.size());
@@ -3062,6 +3070,7 @@ int main(int argc, char** argv)
         sim.fflush_master(stdout);
 
         if (sample_num != num_samples - 1) {
+            sim.reinitialize_mapping();
             sim.set_zero_state();
             sim.reset_clbits();
         }
