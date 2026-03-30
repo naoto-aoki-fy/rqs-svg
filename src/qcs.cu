@@ -63,7 +63,7 @@ __device__ __host__ complex_t multiply_i_real(complex_t input, float_t multiplie
     return complex_t(- multiplier * input.imag(), + multiplier * input.real());
 }
 
-constexpr uint64_t kernel_input_max_size = 256;
+constexpr uint64_t kernel_input_max_size = 512;
 
 __global__ void initstate_sequential_kernel(qcs::complex_t* const data_global, int proc_num)
 {
