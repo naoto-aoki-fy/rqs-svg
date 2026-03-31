@@ -2073,8 +2073,8 @@ void prepare_operating_gate() {
     if (!proc_num_control_condition) { return; }
 
     uint64_t const qkiqn_size = qcs::kernel_input_qnlist_struct::needed_size(
-        positive_control_qubit_num_physical_list.size(),
-        negative_control_qubit_num_physical_list.size(),
+        positive_control_qubit_num_physical_local_list.size(),
+        negative_control_qubit_num_physical_local_list.size(),
         target_qubit_num_physical_list.size()
     );
     if (qkiqn_size > qcs::kernel_input_max_size) {
