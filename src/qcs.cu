@@ -1560,6 +1560,7 @@ unsigned int rng_seed;
 std::mt19937_64 engine;
 
 int log_num_procs;
+int max_num_qubits_local_device;
 int log_block_size_max;
 int block_size_max;
 int target_qubit_num_begin;
@@ -1636,6 +1637,17 @@ void setup() {
 
     gpu_id = my_node_local_rank;
     ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
+    cudaDeviceProp prop;
+    ATLC_CHECK_CUDA(cudaGetDeviceProperties, &prop, 0);
+    max_num_qubits_local_device = atlc::log2_int(prop.totalGlobalMem >> 4);
+    if (proc_num == 0 && max_num_qubits_local_device > qcs::max_num_qubits_local) {
+        fprintf(
+            stderr,
+            "[qcs] Recommendation: increase qcs::max_num_qubits_local (current=%d, device-based=%d).\n",
+            qcs::max_num_qubits_local,
+            max_num_qubits_local_device
+        );
+    }
 
     if (proc_num == 0) {
         ATLC_CHECK_NCCL(ncclGetUniqueId, &nccl_id);
@@ -1700,8 +1712,8 @@ void reinitialize_mapping() {
 
 void allocate_memory(int num_qubits) {
 
-    if (num_qubits > qcs::max_num_qubits_local + log_num_procs) {
-        throw std::runtime_error(atlc::format("num_qubits(%d) > qcs::max_num_qubits_local(%d) + log_num_procs(%d)", num_qubits, qcs::max_num_qubits_local, log_num_procs));
+    if (num_qubits > max_num_qubits_local_device + log_num_procs) {
+        throw std::runtime_error(atlc::format("num_qubits(%d) > max_num_qubits_local_device(%d) + log_num_procs(%d)", num_qubits, max_num_qubits_local_device, log_num_procs));
     }
 
     std::vector<std::string> exmes_list;
