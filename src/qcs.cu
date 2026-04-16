@@ -87,16 +87,16 @@ __constant__ qcs::kernel_common_struct kernel_common_constant;
 
 struct kernel_input_qnlist_struct {
     int num_target_qubits;
-    int num_positive_control_qubits;
     int num_negative_control_qubits;
+    int num_positive_control_qubits;
     uint64_t is_measured_bits;
     uint64_t measured_value_bits;
     int qubit_num_list[1];
 
     static constexpr __host__ __device__ uint64_t needed_size(
-        int const num_positive_control_qubits,
+        int const num_target_qubits,
         int const num_negative_control_qubits,
-        int const num_target_qubits
+        int const num_positive_control_qubits
     ) {
         return
             sizeof(qcs::kernel_input_qnlist_struct)
@@ -109,7 +109,7 @@ struct kernel_input_qnlist_struct {
     }
 
     __host__ __device__ uint64_t byte_size() const {
-        return needed_size(this->num_positive_control_qubits, this->num_negative_control_qubits, this->num_target_qubits);
+        return needed_size(this->num_target_qubits, this->num_negative_control_qubits, this->num_positive_control_qubits);
     }
 
     __host__ __device__ int get_num_operand_qubits() const {
@@ -151,7 +151,7 @@ struct kernel_input_qnlist_struct {
 }; /* kernel_input_qnlist_struct */
 
 constexpr int max_num_qubits_local = 34;
-constexpr uint64_t kernel_input_max_size = qcs::kernel_input_qnlist_struct::needed_size(0, 0, qcs::max_num_qubits_local);
+constexpr uint64_t kernel_input_max_size = qcs::kernel_input_qnlist_struct::needed_size(qcs::max_num_qubits_local, 0, 0);
 __constant__ unsigned char kernel_input_constant[qcs::kernel_input_max_size];
 
 static __device__ void thread_num_to_state_index_q0(uint64_t thread_num, uint64_t& index_state) {
@@ -2089,9 +2089,9 @@ void prepare_operating_gate() {
     if (!proc_num_control_condition) { return; }
 
     uint64_t const qkiqn_size = qcs::kernel_input_qnlist_struct::needed_size(
-        positive_control_qubit_num_physical_local_list.size(),
+        target_qubit_num_physical_list.size(),
         negative_control_qubit_num_physical_local_list.size(),
-        target_qubit_num_physical_list.size()
+        positive_control_qubit_num_physical_local_list.size()
     );
     qcs_kernel_input_host_buffer.resize(qkiqn_size);
     qcs::kernel_input_qnlist_struct* const qcs_kernel_input_host = (qcs::kernel_input_qnlist_struct*)qcs_kernel_input_host_buffer.data();
