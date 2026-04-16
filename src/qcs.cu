@@ -150,8 +150,8 @@ struct kernel_input_qnlist_struct {
     }
 }; /* kernel_input_qnlist_struct */
 
-constexpr int max_num_qubits = 64;
-constexpr uint64_t kernel_input_max_size = qcs::kernel_input_qnlist_struct::needed_size(0, 0, qcs::max_num_qubits);
+constexpr int max_num_qubits_local = 34;
+constexpr uint64_t kernel_input_max_size = qcs::kernel_input_qnlist_struct::needed_size(0, 0, qcs::max_num_qubits_local);
 __constant__ unsigned char kernel_input_constant[qcs::kernel_input_max_size];
 
 static __device__ void thread_num_to_state_index_q0(uint64_t thread_num, uint64_t& index_state) {
@@ -1700,8 +1700,8 @@ void reinitialize_mapping() {
 
 void allocate_memory(int num_qubits) {
 
-    if (num_qubits > qcs::max_num_qubits) {
-        throw std::runtime_error(atlc::format("num_qubits(%d) > qcs::max_num_qubits(%d)", num_qubits, qcs::max_num_qubits));
+    if (num_qubits > qcs::max_num_qubits_local + log_num_procs) {
+        throw std::runtime_error(atlc::format("num_qubits(%d) > qcs::max_num_qubits_local(%d) + log_num_procs(%d)", num_qubits, qcs::max_num_qubits_local, log_num_procs));
     }
 
     std::vector<std::string> exmes_list;
