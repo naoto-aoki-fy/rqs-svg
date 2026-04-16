@@ -63,8 +63,6 @@ __device__ __host__ complex_t multiply_i_real(complex_t input, float_t multiplie
     return complex_t(- multiplier * input.imag(), + multiplier * input.real());
 }
 
-constexpr uint64_t kernel_input_max_size = 512;
-
 __global__ void initstate_sequential_kernel(qcs::complex_t* const data_global, int proc_num)
 {
     uint64_t const num_threads = (uint64_t)gridDim.x * (uint64_t)blockDim.x;
@@ -87,8 +85,6 @@ __constant__ qcs::complex_t zero_constant;
 
 __constant__ qcs::kernel_common_struct kernel_common_constant;
 
-__constant__ unsigned char kernel_input_constant[qcs::kernel_input_max_size];
-
 struct kernel_input_qnlist_struct {
     int num_target_qubits;
     int num_positive_control_qubits;
@@ -97,7 +93,7 @@ struct kernel_input_qnlist_struct {
     uint64_t measured_value_bits;
     int qubit_num_list[1];
 
-    static __host__ __device__ uint64_t needed_size(
+    static constexpr __host__ __device__ uint64_t needed_size(
         int const num_positive_control_qubits,
         int const num_negative_control_qubits,
         int const num_target_qubits
@@ -153,6 +149,10 @@ struct kernel_input_qnlist_struct {
             + this->num_target_qubits;
     }
 }; /* kernel_input_qnlist_struct */
+
+constexpr int max_num_qubits = 64;
+constexpr uint64_t kernel_input_max_size = qcs::kernel_input_qnlist_struct::needed_size(0, 0, qcs::max_num_qubits);
+__constant__ unsigned char kernel_input_constant[qcs::kernel_input_max_size];
 
 static __device__ void thread_num_to_state_index_q0(uint64_t thread_num, uint64_t& index_state) {
     auto args = (qcs::kernel_input_qnlist_struct const*)(void*)qcs::kernel_input_constant;
@@ -1700,6 +1700,10 @@ void reinitialize_mapping() {
 
 void allocate_memory(int num_qubits) {
 
+    if (num_qubits > qcs::max_num_qubits) {
+        throw std::runtime_error(atlc::format("num_qubits(%d) > qcs::max_num_qubits(%d)", num_qubits, qcs::max_num_qubits));
+    }
+
     std::vector<std::string> exmes_list;
     if (this->num_qubits > 0) {
         exmes_list.push_back(atlc::format("num_qubits is already set %d > 0", this->num_qubits));
@@ -2077,9 +2081,6 @@ void prepare_operating_gate() {
         negative_control_qubit_num_physical_local_list.size(),
         target_qubit_num_physical_list.size()
     );
-    if (qkiqn_size > qcs::kernel_input_max_size) {
-        throw std::runtime_error(atlc::format("qkiqn_size(%" PRIu64 ") > qcs::kernel_input_max_size(%" PRIu64 ")", qkiqn_size, qcs::kernel_input_max_size));
-    }
     qcs_kernel_input_host_buffer.resize(qkiqn_size);
     qcs::kernel_input_qnlist_struct* const qcs_kernel_input_host = (qcs::kernel_input_qnlist_struct*)qcs_kernel_input_host_buffer.data();
 
