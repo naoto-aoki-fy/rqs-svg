@@ -12,6 +12,14 @@ make qcs      # build standalone simulator
 
 ## Compiling Circuit
 
+Use the helper script:
+
+```
+./compile_circuit.sh user_circuit.cpp -o user_circuit.so
+```
+
+The script resolves `DIR_QCS_HPP` automatically from `BASH_SOURCE` and executes:
+
 ```
 g++ -fPIC -shared -I(DIR_QCS_HPP) -std=c++17 user_circuit.cpp -o user_circuit.so
 ```
