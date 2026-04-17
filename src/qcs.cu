@@ -1648,7 +1648,7 @@ void setup() {
     if (used_memory_bytes > (UINT64_C(1) << 27)) {
         fprintf(
             stderr,
-            "warn: GPU memory already in use before allocations: %.2f GiB (used=%" PRIu64 " bytes, total=%zu bytes).\n",
+            "[warn] GPU memory already in use before allocations: %.2f GiB (used=%" PRIu64 " bytes, total=%zu bytes).\n",
             (double)used_memory_bytes / (double)(UINT64_C(1) << 30),
             used_memory_bytes,
             total_memory_bytes
@@ -1727,7 +1727,7 @@ void allocate_memory(int num_qubits) {
     if (proc_num == 0 && max_num_qubits_local_device > qcs::max_num_qubits_local) {
         fprintf(
             stderr,
-            "warn: recommendation: increase qcs::max_num_qubits_local (current=%d, device-based=%d).\n",
+            "[warn] recommendation: increase qcs::max_num_qubits_local (current=%d, device-based=%d).\n",
             qcs::max_num_qubits_local,
             max_num_qubits_local_device
         );
@@ -1792,7 +1792,7 @@ void allocate_memory(int num_qubits) {
             log_swap_buffer_total_length = log_swap_buffer_total_length_avail;
             fprintf(
                 stderr,
-                "warn: swap buffer length reduced due to free memory limit (log=%d, target=%d).\n",
+                "[warn] swap buffer length reduced due to free memory limit (log=%d, target=%d).\n",
                 log_swap_buffer_total_length,
                 num_qubits_local - 1
             );
@@ -1801,7 +1801,7 @@ void allocate_memory(int num_qubits) {
         log_swap_buffer_total_length = 0;
         fprintf(
             stderr,
-            "warn: insufficient free memory for additional swap buffer allocation (bytes=%zu).\n",
+            "[warn] insufficient free memory for additional swap buffer allocation (bytes=%zu).\n",
             initial_free_memory_bytes
         );
     }
