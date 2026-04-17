@@ -1561,6 +1561,7 @@ std::mt19937_64 engine;
 
 int log_num_procs;
 int max_num_qubits_local_device;
+uint64_t initial_free_memory_bytes;
 int log_block_size_max;
 int block_size_max;
 int target_qubit_num_begin;
@@ -1622,7 +1623,8 @@ bool proc_num_control_condition;
 simulator_core() :
 num_qubits(0),
 use_unified_memory(false),
-num_rand_areas(1)
+num_rand_areas(1),
+initial_free_memory_bytes(0)
 {
 }
 
@@ -1637,9 +1639,24 @@ void setup() {
 
     gpu_id = my_node_local_rank;
     ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
-    cudaDeviceProp prop;
-    ATLC_CHECK_CUDA(cudaGetDeviceProperties, &prop, 0);
-    max_num_qubits_local_device = atlc::log2_int(prop.totalGlobalMem >> 4);
+
+    size_t total_memory_bytes = 0;
+    size_t free_memory_bytes = 0;
+    ATLC_CHECK_CUDA(cudaMemGetInfo, &free_memory_bytes, &total_memory_bytes);
+    initial_free_memory_bytes = free_memory_bytes;
+
+    uint64_t const used_memory_bytes = (uint64_t)total_memory_bytes - (uint64_t)free_memory_bytes;
+    if (used_memory_bytes > (UINT64_C(1) << 30)) {
+        fprintf(
+            stderr,
+            "warn: GPU memory already in use before allocations: %.2f GiB (used=%" PRIu64 " bytes, total=%zu bytes).\n",
+            (double)used_memory_bytes / (double)(UINT64_C(1) << 30),
+            used_memory_bytes,
+            total_memory_bytes
+        );
+    }
+
+    max_num_qubits_local_device = atlc::log2_int((uint64_t)initial_free_memory_bytes >> 4);
     if (proc_num == 0 && max_num_qubits_local_device > qcs::max_num_qubits_local) {
         fprintf(
             stderr,
