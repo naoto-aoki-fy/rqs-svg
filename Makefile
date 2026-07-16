@@ -16,7 +16,7 @@ LDLIBS ?= -lcurand -lnccl -lssl -lcrypto -ldl
 NVCC ?= nvcc
 INCLUDE ?= -I./atlc/include -I./include
 # CC_CFLAGS = $(CFLAGS) -Wformat=2 $(INCLUDE) -O3 -rdynamic -std=c++17
-NVCC_CFLAGS = $(CFLAGS) -Xcompiler -Wformat=2 $(INCLUDE) -Xcompiler -rdynamic -std=c++17 -Wno-deprecated-gpu-targets $(NVCC_GENCODE_FLAGS)
+NVCC_CFLAGS = $(CFLAGS) -Xcompiler -Wformat=2 $(INCLUDE) -O3 -Xcompiler -rdynamic -std=c++17 -Wno-deprecated-gpu-targets $(NVCC_GENCODE_FLAGS)
 # LDFLAGS += -Bdynamic $(LDLIBS) -lcudart
 NVCC_LDFLAGS += $(LDLIBS) --cudart=shared
 MPIRUN ?= mpirun
