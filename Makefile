@@ -7,7 +7,7 @@ ifndef NVCCOPTIONS
 endif
 
 NVCC = nvcc
-NVCCFLAGS = $(NVCCOPTIONS) -Xcompiler -Wformat=2 -I./atlc/include -I./include -I./cxxopts/include -lcurand -lnccl -lssl -lcrypto -ldl --cudart=shared -O3 -Xcompiler -fopenmp -Xcompiler -rdynamic -std=c++17 -rdc=true -Wno-deprecated-gpu-targets -gencode=arch=compute_$(SM_VER),code=sm_$(SM_VER)
+NVCCFLAGS = $(NVCCOPTIONS) -Xcompiler -Wformat=2 -I./atlc/include -I./include -I./cxxopts/include -lcurand -lnccl -lssl -lcrypto -ldl --cudart=shared -O3 -Xcompiler -fopenmp -Xcompiler -rdynamic -std=c++17 -rdc=true -Wno-deprecated-gpu-targets $(NVCC_GENCODE_FLAGS)
 MPIRUN = mpirun
 MPIRUN_FLAGS ?= -np $(shell nvidia-smi -L 2>/dev/null | wc -l)
 
