@@ -6,41 +6,20 @@ The RQS-SVG is a GPU-accelerated testbed for quantum circuit simulation. The cod
 
 The project requires NVIDIA's CUDA toolkit as well as NCCL and MPI.
 
-Specify the target GPU architecture by passing `SM_VER` to `make`. For example:
-
-```sh
-make qcs NVCC_GENCODE_FLAGS=-gencode=arch=compute_100,code=sm_100
-```
-
-Alternatively, you can define `NVCC_GENCODE_FLAGS` in `config.mk`, which is automatically included by the Makefile:
-
-```make
-NVCC_GENCODE_FLAGS = -gencode=arch=compute_100,code=sm_100
-```
-
-You can obtain the appropriate version number value from your GPU's compute capability with:
-
-```sh
-nvidia-smi --query-gpu=compute_cap --format=csv,noheader \
-  | awk '{ print $1 * 10 }'
-```
-
-For example, a compute capability of `10.0` corresponds to `NVCC_GENCODE_FLAGS = -gencode=arch=compute_100,code=sm_100`.
-
-The options required when invoking `nvcc` through the MPI C++ compiler wrapper must be passed to `make` using `NVCCOPTIONS`:
+Specify the target GPU architecture by passing `NVCC_GENCODE_FLAGS` to `make`. Also the options required when invoking `nvcc` through the MPI C++ compiler wrapper must be passed to `make` using `NVCCOPTIONS`. For example:
 
 ```sh
 make qcs NVCC_GENCODE_FLAGS=-gencode=arch=compute_100,code=sm_100 NVCCOPTIONS='(NVCC options)'
 ```
 
-`NVCCOPTIONS` may also be defined in `config.mk`:
+Alternatively, you can define `NVCC_GENCODE_FLAGS` and `NVCCOPTIONS` in `config.mk`, which is automatically included by the Makefile:
 
 ```make
 NVCC_GENCODE_FLAGS = -gencode=arch=compute_100,code=sm_100
 NVCCOPTIONS = (NVCC options)
 ```
 
-`NVCCOPTIONS` should contain the options that `mpicxx` passes to `nvcc`. These options can be obtained using the [`nvccoptions`](https://github.com/naoto-aoki-fy/nvccoptions) utility.
+These options can be obtained using the [`nvccoptions`](https://github.com/naoto-aoki-fy/nvccoptions) utility.
 
 ## Compiling Circuit
 
