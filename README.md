@@ -4,23 +4,40 @@ The RQS-SVG is a GPU-accelerated testbed for quantum circuit simulation. The cod
 
 ## Building Simulator
 
-The project requires NVIDIA's CUDA toolkit as well as NCCL, and MPI. Example build targets:
+The project requires NVIDIA's CUDA toolkit as well as NCCL, and MPI.
 
+Specify the target GPU architecture by passing `SM_VER` to `make`. For example:
+
+```sh
+make qcs SM_VER=100
 ```
-make qcs      # build standalone simulator
+
+Alternatively, you can define `SM_VER` in `config.mk`, which is automatically included by the Makefile:
+
+```make
+SM_VER = 100
 ```
+
+You can obtain the appropriate `SM_VER` value from your GPU's compute capability with:
+
+```sh
+nvidia-smi --query-gpu=compute_cap --format=csv,noheader \
+  | awk '{ print $1 * 10 }'
+```
+
+For example, a compute capability of `10.0` corresponds to `SM_VER=100`.
 
 ## Compiling Circuit
 
 Use the helper script:
 
-```
+```sh
 ./compile_circuit.sh user_circuit.cpp -o user_circuit.so
 ```
 
 The script resolves `DIR_QCS_HPP` automatically from `BASH_SOURCE` and executes:
 
-```
+```sh
 g++ -fPIC -shared -I(DIR_QCS_HPP) -std=c++17 user_circuit.cpp -o user_circuit.so
 ```
 
@@ -28,7 +45,7 @@ g++ -fPIC -shared -I(DIR_QCS_HPP) -std=c++17 user_circuit.cpp -o user_circuit.so
 
 You can execute the built simulator via:
 
-```
+```sh
 mpirun -np (NUM_GPUS) ./qcs [--num-samples NUM_SAMPLES|-s NUM_SAMPLES] user_circuit.so
 
 # Save the final statevector to a binary file
