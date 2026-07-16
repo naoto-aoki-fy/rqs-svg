@@ -6,20 +6,22 @@ The RQS-SVG is a GPU-accelerated testbed for quantum circuit simulation. The cod
 
 The project requires NVIDIA's CUDA toolkit as well as NCCL and MPI.
 
-Specify the target GPU architecture by passing `NVCC_GENCODE_FLAGS` to `make`. Also the options required when invoking `nvcc` through the MPI C++ compiler wrapper must be passed to `make` using `NVCCOPTIONS`. For example:
-
-```sh
-make qcs NVCC_GENCODE_FLAGS=-gencode=arch=compute_100,code=sm_100 NVCCOPTIONS='(NVCC options)'
-```
-
-Alternatively, you can define `NVCC_GENCODE_FLAGS` and `NVCCOPTIONS` in `config.mk`, which is automatically included by the Makefile:
+Define `CFLAGS`, `LDFLAGS`, `NVCC_LDFLAGS`, and `NVCC_GENCODE_FLAGS` in `config.mk`, which is automatically included by the Makefile:
 
 ```make
-NVCC_GENCODE_FLAGS = -gencode=arch=compute_100,code=sm_100
-NVCCOPTIONS = (NVCC options)
+CFLAGS = -I/foo/bar
+LDFLAGS = -L/foo/bar -lfoobar
+NVCC_LDFLAGS = -L/foo/bar -lfoobar
+NVCC_GENCODE_FLAGS = -gencode=arch=compute_xx,code=sm_xx
 ```
 
 These options can be obtained using the [`nvccoptions`](https://github.com/naoto-aoki-fy/nvccoptions) utility.
+
+Then, `make` will build `qcs`.
+
+```sh
+make
+```
 
 ## Compiling Circuit
 
