@@ -1,15 +1,15 @@
 -include config.mk
 ifndef CFLAGS
-  $(error CFLAGS not defined)
+	$(error CFLAGS not defined)
 endif
 ifndef LDFLAGS
-  $(error LDFLAGS not defined)
+	$(error LDFLAGS not defined)
 endif
 ifndef NVCC_LDFLAGS
-  $(error NVCC_LDFLAGS not defined)
+	$(error NVCC_LDFLAGS not defined)
 endif
 ifndef NVCC_GENCODE_FLAGS
-  $(error NVCC_GENCODE_FLAGS not defined)
+	$(error NVCC_GENCODE_FLAGS not defined)
 endif
 
 LDLIBS ?= -lcurand -lnccl -lssl -lcrypto -ldl
@@ -26,16 +26,16 @@ MPIRUN_FLAGS ?= -np $(shell nvidia-smi -L 2>/dev/null | wc -l)
 target: qcs
 
 qcs: src/qcs.cu src/qcs_args.c src/qcs_args.h include/qcs.hpp
-        $(NVCC) $(NVCC_CFLAGS) $(NVCC_LDFLAGS) src/qcs.cu src/qcs_args.c -o $@
+	$(NVCC) $(NVCC_CFLAGS) $(NVCC_LDFLAGS) src/qcs.cu src/qcs_args.c -o $@
 
 .PHONY: gengetopt
 gengetopt: src/qcs_args.ggo
-        gengetopt --input=$< --unamed-opts --file-name=qcs_args --output-dir=src
+	gengetopt --input=$< --unamed-opts --file-name=qcs_args --output-dir=src
 
 .PHONY: run
 run: qcs
-        $(MPIRUN) $(MPIRUN_FLAGS) ./$<
+	$(MPIRUN) $(MPIRUN_FLAGS) ./$<
 
 .PHONY: clean
 clean:
-        $(RM) qcs
+	$(RM) qcs
