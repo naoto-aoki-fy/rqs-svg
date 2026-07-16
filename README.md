@@ -9,34 +9,34 @@ The project requires NVIDIA's CUDA toolkit as well as NCCL and MPI.
 Specify the target GPU architecture by passing `SM_VER` to `make`. For example:
 
 ```sh
-make qcs SM_VER=100
+make qcs NVCC_GENCODE_FLAGS=-gencode=arch=compute_100,code=sm_100
 ```
 
-Alternatively, you can define `SM_VER` in `config.mk`, which is automatically included by the Makefile:
+Alternatively, you can define `NVCC_GENCODE_FLAGS` in `config.mk`, which is automatically included by the Makefile:
 
 ```make
-SM_VER = 100
+NVCC_GENCODE_FLAGS = -gencode=arch=compute_100,code=sm_100
 ```
 
-You can obtain the appropriate `SM_VER` value from your GPU's compute capability with:
+You can obtain the appropriate version number value from your GPU's compute capability with:
 
 ```sh
 nvidia-smi --query-gpu=compute_cap --format=csv,noheader \
   | awk '{ print $1 * 10 }'
 ```
 
-For example, a compute capability of `10.0` corresponds to `SM_VER=100`.
+For example, a compute capability of `10.0` corresponds to `NVCC_GENCODE_FLAGS = -gencode=arch=compute_100,code=sm_100`.
 
 The options required when invoking `nvcc` through the MPI C++ compiler wrapper must be passed to `make` using `NVCCOPTIONS`:
 
 ```sh
-make qcs SM_VER=100 NVCCOPTIONS='(NVCC options)'
+make qcs NVCC_GENCODE_FLAGS=-gencode=arch=compute_100,code=sm_100 NVCCOPTIONS='(NVCC options)'
 ```
 
 `NVCCOPTIONS` may also be defined in `config.mk`:
 
 ```make
-SM_VER = 100
+NVCC_GENCODE_FLAGS = -gencode=arch=compute_100,code=sm_100
 NVCCOPTIONS = (NVCC options)
 ```
 
@@ -59,7 +59,7 @@ NVCCOPTIONS = -Xlinker -rpath -Xlinker '$$ORIGIN/../lib'
 The same escaping is required when passing the value on the `make` command line:
 
 ```sh
-make qcs SM_VER=100 \
+make qcs NVCC_GENCODE_FLAGS=-gencode=arch=compute_100,code=sm_100 \
   NVCCOPTIONS="-Xlinker -rpath -Xlinker '\$$ORIGIN/../lib'"
 ```
 

@@ -1,6 +1,6 @@
 -include config.mk
-ifndef SM_VER
-  $(error SM_VER not defined)
+ifndef NVCC_GENCODE_FLAGS
+  $(error NVCC_GENCODE_FLAGS not defined)
 endif
 ifndef NVCCOPTIONS
   $(error NVCCOPTIONS not defined)
