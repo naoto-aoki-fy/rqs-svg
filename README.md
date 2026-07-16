@@ -40,28 +40,7 @@ NVCC_GENCODE_FLAGS = -gencode=arch=compute_100,code=sm_100
 NVCCOPTIONS = (NVCC options)
 ```
 
-When using the NVIDIA HPC SDK, `NVCCOPTIONS` should contain the options that `mpicxx` passes to `nvcc`. These options can be obtained using the [`nvccoptions`](https://github.com/naoto-aoki-fy/nvccoptions) utility:
-
-```sh
-git clone https://github.com/naoto-aoki-fy/nvccoptions.git
-cd nvccoptions
-./get_nvccopts.sh
-```
-
-The utility prints the options passed to `nvcc` when NVIDIA HPC SDK's `mpicxx` compiles CUDA code. Pass the resulting option string to `make` or assign it to `NVCCOPTIONS` in `config.mk`.
-
-Because `NVCCOPTIONS` is processed by `make`, each dollar sign (`$`) in the option string must be escaped as `$$`. For example, if the generated options contain `$ORIGIN`, specify it as `$$ORIGIN`:
-
-```make
-NVCCOPTIONS = -Xlinker -rpath -Xlinker '$$ORIGIN/../lib'
-```
-
-The same escaping is required when passing the value on the `make` command line:
-
-```sh
-make qcs NVCC_GENCODE_FLAGS=-gencode=arch=compute_100,code=sm_100 \
-  NVCCOPTIONS="-Xlinker -rpath -Xlinker '\$$ORIGIN/../lib'"
-```
+`NVCCOPTIONS` should contain the options that `mpicxx` passes to `nvcc`. These options can be obtained using the [`nvccoptions`](https://github.com/naoto-aoki-fy/nvccoptions) utility.
 
 ## Compiling Circuit
 
