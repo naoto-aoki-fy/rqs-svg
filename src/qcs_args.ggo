@@ -1,0 +1,11 @@
+package "qcs"
+version "1.0"
+purpose "GPU-accelerated quantum circuit simulator"
+usage "qcs [OPTIONS] USER_CIRCUIT_SO"
+
+description "Command-line option schema for gengetopt. The compiled parser mirrors this schema and uses getopt_long-compatible options."
+
+option "num-samples" s "Number of measurement samples" int default="1" no
+option "mapping" - "Comma-separated physical-to-logical qubit mapping" string no
+option "reversed-mapping" r "Reverse the qubit mapping (swap perm_p2l/perm_l2p)" flag off
+option "output-statevector" - "Write final statevector to the specified file" string no

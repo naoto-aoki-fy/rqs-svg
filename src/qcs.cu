@@ -43,7 +43,7 @@
 #include <atlc/check_nccl.hpp>
 
 #include <qcs.hpp>
-#include <cxxopts.hpp>
+#include "qcs_args.h"
 
 namespace qcs {
 
@@ -3053,36 +3053,24 @@ static std::vector<int> invert_mapping(std::vector<int> const& perm_p2l, int con
 
 int main(int argc, char** argv)
 {
+    gengetopt_args_info parsed_options;
+    if (cmdline_parser(argc, argv, &parsed_options) != 0) {
+        throw std::runtime_error("failed to parse command-line options");
+    }
+    ATLC_DEFER_FUNC(cmdline_parser_free, &parsed_options);
+
+    if (parsed_options.inputs_num != 1) {
+        throw std::runtime_error("user circuit shared object path is required");
+    }
+
     qcs::simulator sim;
     sim.setup();
     ATLC_DEFER_FUNC(sim.dispose);
 
-    cxxopts::Options options("qcs", "GPU-accelerated quantum circuit simulator");
-    options.positional_help("USER_CIRCUIT_SO");
-    options.add_options()
-        ("s,num-samples", "Number of measurement samples", cxxopts::value<int>()->default_value("1"))
-        ("mapping", "Comma-separated physical-to-logical qubit mapping", cxxopts::value<std::string>())
-        ("r,reversed-mapping", "Reverse the qubit mapping (swap perm_p2l/perm_l2p)")
-        ("output-statevector", "Write final statevector to the specified file", cxxopts::value<std::string>())
-        ("user-circuit", "Path to user circuit shared object", cxxopts::value<std::string>())
-        ("h,help", "Print usage");
-    options.parse_positional({"user-circuit"});
-
-    auto parsed_options = options.parse(argc, argv);
-
-    if (parsed_options.count("help") > 0) {
-        fprintf(stdout, "%s\n", options.help().c_str());
-        return 0;
-    }
-
-    if (parsed_options.count("user-circuit") == 0) {
-        throw std::runtime_error("user circuit shared object path is required");
-    }
-
-    std::string const usercircuit_so_path = parsed_options["user-circuit"].as<std::string>();
-    int const num_samples = parsed_options["num-samples"].as<int>();
-    std::string const output_statevector_path = parsed_options.count("output-statevector") > 0
-        ? parsed_options["output-statevector"].as<std::string>()
+    std::string const usercircuit_so_path = parsed_options.inputs[0];
+    int const num_samples = parsed_options.num_samples_arg;
+    std::string const output_statevector_path = parsed_options.output_statevector_given > 0
+        ? parsed_options.output_statevector_arg
         : "";
     if (num_samples <= 0) {
         throw std::runtime_error("num_samples must be greater than 0");
@@ -3104,8 +3092,8 @@ int main(int argc, char** argv)
     circuit_init(&sim);
 
     std::vector<int> mapping;
-    if (parsed_options.count("mapping") > 0) {
-        mapping = parse_mapping_csv(parsed_options["mapping"].as<std::string>());
+    if (parsed_options.mapping_given > 0) {
+        mapping = parse_mapping_csv(parsed_options.mapping_arg);
     } else {
         mapping.resize(sim.get_num_qubits());
         for (int qubit_num = 0; qubit_num < sim.get_num_qubits(); qubit_num++) {
@@ -3113,7 +3101,7 @@ int main(int argc, char** argv)
         }
     }
 
-    if (parsed_options.count("reversed-mapping") > 0) {
+    if (parsed_options.reversed_mapping_flag) {
         mapping = invert_mapping(mapping, sim.get_num_qubits());
     }
     sim.set_mapping(mapping);

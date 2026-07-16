@@ -1,6 +1,3 @@
 [submodule "atlc"]
 	path = atlc
 	url = https://github.com/naoto-aoki-fy/atlc.git
-[submodule "cxxopts"]
-	path = cxxopts
-	url = https://github.com/jarro2783/cxxopts.git
