@@ -6,13 +6,12 @@ The RQS-SVG is a GPU-accelerated testbed for quantum circuit simulation. The cod
 
 The project requires NVIDIA's CUDA toolkit as well as NCCL and MPI.
 
-Define `CFLAGS`, `LDFLAGS`, `NVCC_LDFLAGS`, and `NVCC_GENCODE_FLAGS` in `config.mk`, which is automatically included by the Makefile:
+Define `CFLAGS_VENDOR`, `LDFLAGS_VENDOR`, and `GENCODE_FLAGS` in `config.mk`, which is automatically included by the Makefile:
 
 ```make
-CFLAGS = -I/foo/bar
-LDFLAGS = -L/foo/bar -lfoobar
-NVCC_LDFLAGS = -L/foo/bar -lfoobar
-NVCC_GENCODE_FLAGS = -gencode=arch=compute_xx,code=sm_xx
+CFLAGS_VENDOR = -I/foo/bar
+LDFLAGS_VENDOR = -L/foo/bar -lfoobar
+GENCODE_FLAGS = -gencode=arch=compute_xx,code=sm_xx
 ```
 
 These options can be obtained using the [`nvccoptions`](https://github.com/naoto-aoki-fy/nvccoptions) utility.

@@ -1,24 +1,19 @@
 -include config.mk
-ifndef CFLAGS
-	$(error CFLAGS not defined)
+ifndef CFLAGS_VENDOR
+	$(error CFLAGS_VENDOR not defined)
 endif
-ifndef LDFLAGS
-	$(error LDFLAGS not defined)
+ifndef LDFLAGS_VENDOR
+	$(error LDFLAGS_VENDOR not defined)
 endif
-ifndef NVCC_LDFLAGS
-	$(error NVCC_LDFLAGS not defined)
-endif
-ifndef NVCC_GENCODE_FLAGS
-	$(error NVCC_GENCODE_FLAGS not defined)
+ifndef GENCODE_FLAGS
+	$(error GENCODE_FLAGS not defined)
 endif
 
 LDLIBS ?= -lcurand -lnccl -lssl -lcrypto -ldl
-NVCC ?= nvcc
+NVCC ?= nvcc --forward-unknown-to-host-compiler
 INCLUDE ?= -I./atlc/include -I./include
-# CC_CFLAGS = $(CFLAGS) -Wformat=2 $(INCLUDE) -O3 -rdynamic -std=c++17
-NVCC_CFLAGS = $(CFLAGS) -Xcompiler -Wformat=2 $(INCLUDE) -O3 -Xcompiler -rdynamic -std=c++17 -Wno-deprecated-gpu-targets $(NVCC_GENCODE_FLAGS)
-# LDFLAGS += -Bdynamic $(LDLIBS) -lcudart
-NVCC_LDFLAGS += $(LDLIBS) --cudart=shared
+NVCC_CFLAGS = $(CFLAGS_VENDOR) -Wformat=2 $(INCLUDE) -O3 -rdynamic -std=c++17 -Wno-deprecated-gpu-targets $(GENCODE_FLAGS)
+NVCC_LDFLAGS = $(LDFLAGS_VENDOR) $(LDLIBS) --cudart=shared
 MPIRUN ?= mpirun
 MPIRUN_FLAGS ?= -np $(shell nvidia-smi -L 2>/dev/null | wc -l)
 
