@@ -6,6 +6,10 @@ The RQS-SVG is a GPU-accelerated testbed for quantum circuit simulation. The cod
 
 The project requires NVIDIA's CUDA toolkit as well as NCCL and MPI.
 
+Before building, set up the
+[`atlc`](https://github.com/naoto-aoki-fy/atlc)
+repository, which is required during the build process.
+
 Define `CFLAGS_VENDOR`, `LDFLAGS_VENDOR`, and `GENCODE_FLAGS` in `config.mk`, which is automatically included by the Makefile:
 
 ```make
