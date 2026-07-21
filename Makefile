@@ -1,14 +1,4 @@
 -include config.mk
-ifndef CFLAGS_VENDOR
-	$(error CFLAGS_VENDOR not defined)
-endif
-ifndef LDFLAGS_VENDOR
-	$(error LDFLAGS_VENDOR not defined)
-endif
-ifndef GENCODE_FLAGS
-	$(error GENCODE_FLAGS not defined)
-endif
-
 LDLIBS ?= -lcurand -lnccl -lssl -lcrypto -ldl
 NVCC ?= nvcc --forward-unknown-to-host-compiler
 INCLUDE ?= -I./atlc/include -I./include
