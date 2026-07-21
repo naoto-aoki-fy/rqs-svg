@@ -22,6 +22,14 @@ Then, `make` will build `qcs`.
 make
 ```
 
+### CUDA 10.x Note
+
+For CUDA 10.x, it is recommended using
+[nvcc-wrapper](https://github.com/naoto-aoki-fy/nvcc-wrapper)
+and setting
+`NVCC="python3 /path/to/nvcc_wrapper.py"`.
+
+
 ## Compiling Circuit
 
 Use the helper script:
