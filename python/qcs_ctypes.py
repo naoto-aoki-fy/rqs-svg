@@ -80,6 +80,20 @@ def _configure_library(lib: ctypes.CDLL) -> None:
     lib.qcs_simulator_get_clbits_string.restype = None
     lib.qcs_simulator_save_statevector.argtypes = [sim, ctypes.c_char_p]
     lib.qcs_simulator_save_statevector.restype = None
+    lib.qcs_simulator_set_zero_state.argtypes = [sim]
+    lib.qcs_simulator_set_zero_state.restype = None
+    lib.qcs_simulator_reset_clbits.argtypes = [sim]
+    lib.qcs_simulator_reset_clbits.restype = None
+    lib.qcs_simulator_reset_measurement_state.argtypes = [sim]
+    lib.qcs_simulator_reset_measurement_state.restype = None
+    lib.qcs_simulator_reinitialize_mapping.argtypes = [sim]
+    lib.qcs_simulator_reinitialize_mapping.restype = None
+    lib.qcs_simulator_event_create.argtypes = [sim]
+    lib.qcs_simulator_event_create.restype = ctypes.c_int
+    lib.qcs_simulator_event_record.argtypes = [sim, ctypes.c_int]
+    lib.qcs_simulator_event_record.restype = None
+    lib.qcs_simulator_event_get_elapsed_time.argtypes = [sim, ctypes.c_int, ctypes.c_int]
+    lib.qcs_simulator_event_get_elapsed_time.restype = ctypes.c_double
 
     gate_args = [
         sim,
@@ -169,6 +183,35 @@ class Simulator:
 
     def save_statevector(self, filename: Union[str, os.PathLike]) -> None:
         self._lib.qcs_simulator_save_statevector(self._sim, os.fsencode(filename))
+
+    def set_zero_state(self) -> None:
+        self._lib.qcs_simulator_set_zero_state(self._sim)
+
+    def reset_clbits(self) -> None:
+        self._lib.qcs_simulator_reset_clbits(self._sim)
+
+    def reset_measurement_state(self) -> None:
+        self._lib.qcs_simulator_reset_measurement_state(self._sim)
+
+    def reinitialize_mapping(self) -> None:
+        self._lib.qcs_simulator_reinitialize_mapping(self._sim)
+
+    def reset_for_next_sample(self) -> None:
+        self.reinitialize_mapping()
+        self.set_zero_state()
+        self.reset_clbits()
+        self.reset_measurement_state()
+
+    def event_create(self) -> int:
+        return self._lib.qcs_simulator_event_create(self._sim)
+
+    def event_record(self, event_num: int) -> None:
+        self._lib.qcs_simulator_event_record(self._sim, event_num)
+
+    def event_get_elapsed_time(self, start_event_num: int, stop_event_num: int) -> float:
+        return self._lib.qcs_simulator_event_get_elapsed_time(
+            self._sim, start_event_num, stop_event_num
+        )
 
     def close(self) -> None:
         if not getattr(self, "_closed", True):
