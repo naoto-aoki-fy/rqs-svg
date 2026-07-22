@@ -96,6 +96,7 @@ int main(int argc, char **argv)
     qcs_simulator_set_num_qubits(sim, num_qubits);
     qcs_simulator_set_num_clbits(sim, num_clbits);
     qcs_simulator_allocate_memory(sim);
+    qcs_simulator_warmup_nccl_communication(sim);
 
     int const event_1 = qcs_simulator_event_create(sim);
     int const event_2 = qcs_simulator_event_create(sim);
