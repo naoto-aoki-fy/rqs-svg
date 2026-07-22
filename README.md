@@ -1,6 +1,6 @@
 # RQS-SVG
 
-The RQS-SVG is a GPU-accelerated testbed for quantum circuit simulation. The code provides a `simulator` API (see `qcs.hpp`) implementing common gate operations, state preparation, and measurement using CUDA, MPI, and NCCL. The Makefile builds a standalone `qcs` executable.
+The RQS-SVG is a GPU-accelerated testbed for quantum circuit simulation. The code provides a `simulator` API (see `qcs.h`) implementing common gate operations, state preparation, and measurement using CUDA, MPI, and NCCL. The Makefile builds a standalone `qcs` executable.
 
 ## Building Simulator
 
@@ -42,10 +42,10 @@ Use the helper script:
 ./compile_circuit.sh user_circuit.cpp -o user_circuit.so
 ```
 
-The script resolves `DIR_QCS_HPP` automatically from `BASH_SOURCE` and executes:
+The script resolves `DIR_QCS_H` automatically from `BASH_SOURCE` and executes:
 
 ```sh
-g++ -fPIC -shared -I(DIR_QCS_HPP) -std=c++17 user_circuit.cpp -o user_circuit.so
+g++ -fPIC -shared -I(DIR_QCS_H) -std=c++17 user_circuit.cpp -o user_circuit.so
 ```
 
 ## Running

@@ -42,10 +42,13 @@
 #include <atlc/check_curand.hpp>
 #include <atlc/check_nccl.hpp>
 
-#include <qcs.hpp>
+#include <qcs.h>
 #include "qcs_args.h"
 
 namespace qcs {
+
+constexpr unsigned int max_num_clbits = 64;
+struct simulator_core;
 
 typedef double float_t;
 typedef cuda::std::complex<qcs::float_t> complex_t;
@@ -2661,6 +2664,13 @@ double event_get_elapsed_time(int const start_event_num, int const stop_event_nu
 }; /* simulator_core */
 
 } /* qcs */
+
+struct qcs_simulator {
+    qcs::simulator_core* core;
+    int num_qubits;
+    int num_clbits;
+    std::vector<bool> clbits;
+};
 
 static std::vector<int> qcs_vector_from_array(int const* values, int count) {
     if (count < 0) {

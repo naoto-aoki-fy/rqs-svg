@@ -1,4 +1,4 @@
-#include <qcs.hpp>
+#include <qcs.h>
 #include <cstdlib>
 #include <stdexcept>
 

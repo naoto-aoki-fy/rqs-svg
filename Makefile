@@ -10,7 +10,7 @@ MPIRUN_FLAGS ?= -np $(shell nvidia-smi -L 2>/dev/null | wc -l)
 .PHONY: target
 target: qcs
 
-qcs: src/qcs.cu src/qcs_args.c src/qcs_args.h include/qcs.hpp
+qcs: src/qcs.cu src/qcs_args.c src/qcs_args.h include/qcs.h
 	$(NVCC) $(NVCC_CFLAGS) $(NVCC_LDFLAGS) src/qcs.cu src/qcs_args.c -o $@
 
 .PHONY: gengetopt

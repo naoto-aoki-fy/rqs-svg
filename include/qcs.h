@@ -1,22 +1,11 @@
 #pragma once
 #include <stdio.h>
+
 #ifdef __cplusplus
-#include <vector>
-namespace qcs {
-    constexpr unsigned int max_num_clbits = 64;
-    struct simulator_core;
-    struct simulator {
-        simulator_core* core;
-        int num_qubits;
-        int num_clbits;
-        std::vector<bool> clbits;
-    };
-}
-using qcs_simulator = qcs::simulator;
 extern "C" {
-#else
-typedef struct qcs_simulator qcs_simulator;
 #endif
+
+typedef struct qcs_simulator qcs_simulator;
 
 void qcs_simulator_init(qcs_simulator* sim);
 void qcs_simulator_setup(qcs_simulator* sim);
@@ -86,6 +75,7 @@ __attribute__((format(printf, 3, 4))) int qcs_simulator_fprintf_master(qcs_simul
 __attribute__((format(printf, 3, 4))) int qcs_simulator_fprintf_all(qcs_simulator* sim, FILE *fp, const char *format, ...);
 int qcs_simulator_fflush_master(qcs_simulator* sim, FILE* stream);
 int qcs_simulator_fflush_all(qcs_simulator* sim, FILE* stream);
+
 #ifdef __cplusplus
 }
 #endif
