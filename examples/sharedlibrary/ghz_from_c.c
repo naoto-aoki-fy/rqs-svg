@@ -1,26 +1,88 @@
 #include <qcs.h>
 
+#include <errno.h>
+#include <getopt.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <limits.h>
 
-int main(void)
+static void print_usage(const char *program_name)
 {
+    fprintf(stderr,
+            "Usage: %s --num-qubits NUM_QUBITS [--num-samples NUM_SAMPLES]\n"
+            "\n"
+            "Options:\n"
+            "  --num-qubits NUM_QUBITS    Number of qubits in the GHZ circuit\n"
+            "  --num-samples NUM_SAMPLES  Number of circuit executions (default: 1)\n"
+            "  -h, --help                 Print this help message\n",
+            program_name);
+}
 
-    const char *const num_qubits_str = getenv("NUM_QUBITS");
-    if (num_qubits_str == NULL || num_qubits_str[0] == '\0')
+static int parse_positive_int(const char *option_name, const char *value)
+{
+    if (value == NULL || value[0] == '\0')
     {
-        fprintf(stderr, "NUM_QUBITS is empty\n");
+        fprintf(stderr, "%s requires a positive integer\n", option_name);
         exit(EXIT_FAILURE);
     }
+
+    errno = 0;
     char *endptr;
-    unsigned long parsed_num_qubits = strtoul(num_qubits_str, &endptr, 10);
-    if (endptr == num_qubits_str || parsed_num_qubits > INT_MAX)
+    long parsed_value = strtol(value, &endptr, 10);
+    if (errno != 0 || endptr == value || *endptr != '\0' || parsed_value <= 0 || parsed_value > INT_MAX)
     {
-        fprintf(stderr, "strtoul on NUM_QUBITS failed\n");
+        fprintf(stderr, "%s requires a positive integer in the range [1, %d]\n", option_name, INT_MAX);
         exit(EXIT_FAILURE);
     }
-    int const num_qubits = (int)parsed_num_qubits;
+
+    return (int)parsed_value;
+}
+
+int main(int argc, char **argv)
+{
+    int num_qubits = 0;
+    int num_samples = 1;
+
+    static const struct option long_options[] = {
+        {"num-qubits", required_argument, NULL, 'q'},
+        {"num-samples", required_argument, NULL, 's'},
+        {"help", no_argument, NULL, 'h'},
+        {0, 0, 0, 0},
+    };
+
+    int option;
+    while ((option = getopt_long(argc, argv, "h", long_options, NULL)) != -1)
+    {
+        switch (option)
+        {
+        case 'q':
+            num_qubits = parse_positive_int("--num-qubits", optarg);
+            break;
+        case 's':
+            num_samples = parse_positive_int("--num-samples", optarg);
+            break;
+        case 'h':
+            print_usage(argv[0]);
+            return EXIT_SUCCESS;
+        default:
+            print_usage(argv[0]);
+            return EXIT_FAILURE;
+        }
+    }
+
+    if (optind != argc)
+    {
+        fprintf(stderr, "unexpected positional argument: %s\n", argv[optind]);
+        print_usage(argv[0]);
+        return EXIT_FAILURE;
+    }
+
+    if (num_qubits == 0)
+    {
+        fprintf(stderr, "--num-qubits is required\n");
+        print_usage(argv[0]);
+        return EXIT_FAILURE;
+    }
 
     const int num_clbits = num_qubits;
 
@@ -35,27 +97,52 @@ int main(void)
     qcs_simulator_set_num_clbits(sim, num_clbits);
     qcs_simulator_allocate_memory(sim);
 
-    int target[] = {0};
-    qcs_simulator_gate_h(sim, target, 1, NULL, 0, NULL, 0);
+    int const event_1 = qcs_simulator_event_create(sim);
+    int const event_2 = qcs_simulator_event_create(sim);
 
-    for (int qubit_num = 1; qubit_num < num_qubits; qubit_num++)
+    char *const clbits = malloc((size_t)num_clbits + 1);
+    if (clbits == NULL)
     {
-        int x_target[] = {qubit_num};
-        int ctrl[] = {0};
-        qcs_simulator_gate_x(sim, x_target, 1, NULL, 0, ctrl, 1);
+        fprintf(stderr, "failed to allocate clbits buffer\n");
+        qcs_simulator_destroy(sim);
+        return EXIT_FAILURE;
     }
 
-    for (int qubit_num = 0; qubit_num < num_qubits; qubit_num++)
+    for (int sample_num = 0; sample_num < num_samples; sample_num++)
     {
-        qcs_simulator_measure_to_clbit(sim, qubit_num, qubit_num);
+        qcs_simulator_event_record(sim, event_1);
+
+        int target[] = {0};
+        qcs_simulator_gate_h(sim, target, 1, NULL, 0, NULL, 0);
+
+        for (int qubit_num = 1; qubit_num < num_qubits; qubit_num++)
+        {
+            int x_target[] = {qubit_num};
+            int ctrl[] = {0};
+            qcs_simulator_gate_x(sim, x_target, 1, NULL, 0, ctrl, 1);
+        }
+
+        for (int qubit_num = 0; qubit_num < num_qubits; qubit_num++)
+        {
+            qcs_simulator_measure_to_clbit(sim, qubit_num, qubit_num);
+        }
+
+        qcs_simulator_event_record(sim, event_2);
+        double const elapsed_time = qcs_simulator_event_get_elapsed_time(sim, event_1, event_2);
+
+        qcs_simulator_get_clbits_string(sim, clbits);
+        qcs_simulator_fprintf_master(sim, stdout, "{\"sample_num\": %d, \"clbits\": \"%s\", \"elapsed_time\": %.18g}\n", sample_num, clbits, elapsed_time);
+        qcs_simulator_fflush_master(sim, stdout);
+
+        if (sample_num != num_samples - 1)
+        {
+            qcs_simulator_set_zero_state(sim);
+            qcs_simulator_reset_clbits(sim);
+            qcs_simulator_reset_measurement_state(sim);
+        }
     }
 
-    char* const clbits = malloc(num_clbits + 1);
-    qcs_simulator_get_clbits_string(sim, clbits);
-    qcs_simulator_fprintf_master(sim, stdout, "measured clbits: %s\n", clbits);
-    qcs_simulator_fflush_master(sim, stdout);
     free(clbits);
-
     qcs_simulator_destroy(sim);
     return EXIT_SUCCESS;
 }
