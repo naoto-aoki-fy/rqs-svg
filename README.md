@@ -39,13 +39,13 @@ and setting
 Use the helper script:
 
 ```sh
-./compile_circuit.sh user_circuit.cpp -o user_circuit.so
+./compile_circuit.sh user_circuit.c -o user_circuit.so
 ```
 
 The script resolves `DIR_QCS_H` automatically from `BASH_SOURCE` and executes:
 
 ```sh
-g++ -fPIC -shared -I(DIR_QCS_H) -std=c++17 user_circuit.cpp -o user_circuit.so
+gcc -fPIC -shared -I(DIR_QCS_H) -std=c11 user_circuit.c -o user_circuit.so
 ```
 
 ## Running

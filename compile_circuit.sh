@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-: "${CXX:=g++}"
+: "${CC:=gcc}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIR_QCS_H="${SCRIPT_DIR}/include"
 
-"$CXX" -fPIC -shared -I"${DIR_QCS_H}" -std=c++17 "$@"
+"$CC" -fPIC -shared -I"${DIR_QCS_H}" -std=c11 "$@"
