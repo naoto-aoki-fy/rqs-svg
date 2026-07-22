@@ -73,6 +73,22 @@ mpirun -np (NUM_GPUS) ./ghz_from_c
 Code examples for linking against `libqcs.so` live under
 `examples/sharedlibrary/`.
 
+
+## Using the Shared Library from Python
+
+The `python/qcs_ctypes.py` module loads `libqcs.so` with Python's standard
+`ctypes` package and wraps simulator allocation, gate calls, measurement, and
+destruction in a small `Simulator` class. Build the shared library first, then
+run the Python GHZ example with MPI just like the C example:
+
+```sh
+make sharedlibrary
+mpirun -np (NUM_GPUS) python3 examples/python/ghz_ctypes.py --num-qubits 3
+```
+
+If `libqcs.so` is not in the repository root, pass `--library /path/to/libqcs.so`
+or set `QCS_LIBRARY_PATH=/path/to/libqcs.so`.
+
 ## Running
 
 You can execute the built simulator via:
