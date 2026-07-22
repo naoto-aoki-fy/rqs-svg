@@ -66,7 +66,7 @@ Build the shared library and then compile the C example:
 
 ```sh
 make sharedlibrary
-gcc -I./include -L. -Wl,-rpath,"$PWD" examples/sharedlibrary/ghz_from_c.c -lqcs -o ghz_from_c
+gcc -I./include -L. -Wl,-rpath,"$(realpath .)" examples/sharedlibrary/ghz_from_c.c -lqcs -o ghz_from_c
 mpirun -np (NUM_GPUS) ./ghz_from_c
 ```
 
