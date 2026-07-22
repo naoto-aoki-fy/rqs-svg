@@ -1,6 +1,6 @@
 # RQS-SVG
 
-The RQS-SVG is a GPU-accelerated testbed for quantum circuit simulation. The code provides a `simulator` API (see `qcs.h`) implementing common gate operations, state preparation, and measurement using CUDA, MPI, and NCCL. The Makefile builds a standalone `qcs` executable.
+The RQS-SVG is a GPU-accelerated testbed for quantum circuit simulation. The code provides a `simulator` API (see `qcs.h`) implementing common gate operations, state preparation, and measurement using CUDA, MPI, and NCCL. The Makefile builds a standalone `qcs` executable and can also build `libqcs.so` for programs that link against RQS-SVG directly.
 
 ## Building Simulator
 
@@ -26,6 +26,12 @@ Then, `make` will build `qcs`.
 make
 ```
 
+To build RQS-SVG as a shared library:
+
+```sh
+make sharedlibrary
+```
+
 ### CUDA 10.x Note
 
 For CUDA 10.x, it is recommended using
@@ -47,6 +53,25 @@ The script resolves `DIR_QCS_H` automatically from `BASH_SOURCE` and executes:
 ```sh
 gcc -fPIC -shared -I(DIR_QCS_H) -std=c11 user_circuit.c -o user_circuit.so
 ```
+
+The loadable circuit examples live under `examples/standalone/`.
+
+## Using the Shared Library from C
+
+The shared library exposes the same C API through `include/qcs.h`, plus
+`qcs_simulator_create` and `qcs_simulator_destroy` helpers for C programs that
+cannot allocate the opaque `qcs_simulator` type directly.
+
+Build the shared library and then compile the C example:
+
+```sh
+make sharedlibrary
+gcc -I./include -L. -Wl,-rpath,"$PWD" examples/sharedlibrary/ghz_from_c.c -lqcs -o ghz_from_c
+mpirun -np (NUM_GPUS) ./ghz_from_c
+```
+
+Code examples for linking against `libqcs.so` live under
+`examples/sharedlibrary/`.
 
 ## Running
 

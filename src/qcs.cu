@@ -2688,6 +2688,20 @@ extern "C" void qcs_simulator_init(qcs_simulator* sim) {
     sim->clbits.clear();
 }
 
+extern "C" qcs_simulator* qcs_simulator_create() {
+    qcs_simulator* sim = new qcs_simulator();
+    qcs_simulator_setup(sim);
+    return sim;
+}
+
+extern "C" void qcs_simulator_destroy(qcs_simulator* sim) {
+    if (sim == NULL) {
+        return;
+    }
+    qcs_simulator_dispose(sim);
+    delete sim;
+}
+
 extern "C" void qcs_simulator_setup(qcs_simulator* sim) {
     qcs_simulator_init(sim);
     sim->core = new qcs::simulator_core();
@@ -2976,7 +2990,7 @@ extern "C" int qcs_simulator_fprintf_all(qcs_simulator*, FILE *fp, const char *f
 extern "C" int qcs_simulator_fflush_all(qcs_simulator*, FILE *fp) { return fflush(fp); }
 extern "C" int qcs_simulator_fflush_master(qcs_simulator* sim, FILE *fp) { if (qcs_simulator_get_proc_num(sim) != 0) return 0; return fflush(fp); }
 
-
+#ifndef QCS_SHARED_LIBRARY
 static std::vector<int> parse_mapping_csv(std::string const& mapping_text) {
     if (mapping_text.empty()) {
         throw std::runtime_error("mapping string must not be empty");
@@ -3104,3 +3118,4 @@ int main(int argc, char** argv)
 
     return 0;
 }
+#endif
