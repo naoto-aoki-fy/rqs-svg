@@ -83,7 +83,7 @@ run the Python GHZ example with MPI just like the C example:
 
 ```sh
 make sharedlibrary
-mpirun -np (NUM_GPUS) python3 examples/python/ghz_ctypes.py --num-qubits 3
+mpirun -np (NUM_GPUS) python3 examples/python/ghz.py --num-qubits 30 --num-samples 10
 ```
 
 If `libqcs.so` is not in the repository root, pass `--library /path/to/libqcs.so`
