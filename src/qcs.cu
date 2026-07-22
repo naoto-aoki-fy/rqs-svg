@@ -47,7 +47,6 @@
 
 namespace qcs {
 
-constexpr unsigned int max_num_clbits = 64;
 struct simulator_core;
 
 typedef double float_t;
