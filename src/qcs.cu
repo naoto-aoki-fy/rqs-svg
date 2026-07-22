@@ -1808,7 +1808,7 @@ void allocate_memory(int num_qubits) {
         );
     }
     swap_buffer_total_length = UINT64_C(1) << log_swap_buffer_total_length;
-    ATLC_CHECK_CUDA(cudaMallocAsync, &swap_buffer, swap_buffer_total_length * sizeof(qcs::complex_t), stream);
+    ATLC_CHECK_NCCL(ncclMemAlloc, reinterpret_cast<void**>(&swap_buffer), swap_buffer_total_length * sizeof(qcs::complex_t));
 
     ATLC_CHECK_CUDA(cudaMallocAsync, &cub_temp_buffer_device, 1, stream);
     cub_temp_buffer_device_size = 1;
@@ -1827,7 +1827,8 @@ void free_memory() {
         state_data_device = NULL;
     }
     if (swap_buffer) {
-        ATLC_CHECK_CUDA(cudaFreeAsync, swap_buffer, stream);
+        ATLC_CHECK_CUDA(cudaStreamSynchronize, stream);
+        ATLC_CHECK_NCCL(ncclMemFree, swap_buffer);
         swap_buffer = NULL;
     }
     if (measure_norm_device) {
