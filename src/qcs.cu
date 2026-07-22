@@ -1776,7 +1776,7 @@ void allocate_memory(int num_qubits) {
     if (use_unified_memory) {
         ATLC_CHECK_CUDA(cudaMallocManaged, &state_data_device, num_states_local * sizeof(*state_data_device));
     } else {
-        ATLC_CHECK_CUDA(cudaMallocAsync, &state_data_device, num_states_local * sizeof(*state_data_device), stream);
+        ATLC_CHECK_NCCL(ncclMemAlloc, reinterpret_cast<void**>(&state_data_device), num_states_local * sizeof(*state_data_device));
     }
     initialize_zero();
 
@@ -1823,7 +1823,12 @@ void free_memory() {
         cub_temp_buffer_device = NULL;
     }
     if (state_data_device) {
-        ATLC_CHECK_CUDA(cudaFreeAsync, state_data_device, stream);
+        if (use_unified_memory) {
+            ATLC_CHECK_CUDA(cudaFree, state_data_device);
+        } else {
+            ATLC_CHECK_CUDA(cudaStreamSynchronize, stream);
+            ATLC_CHECK_NCCL(ncclMemFree, state_data_device);
+        }
         state_data_device = NULL;
     }
     if (swap_buffer) {
