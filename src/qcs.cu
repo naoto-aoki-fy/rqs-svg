@@ -1817,6 +1817,51 @@ void allocate_memory(int num_qubits) {
 
 }
 
+void warmup_nccl_communication() {
+    if (num_procs <= 1) {
+        return;
+    }
+
+    if (state_data_device == NULL || swap_buffer == NULL) {
+        throw std::runtime_error("warmup_nccl_communication called before allocate_memory");
+    }
+
+    uint64_t const warmup_length = std::min(swap_buffer_total_length, num_states_local);
+    size_t const warmup_count = warmup_length * 2;
+
+    ATLC_CHECK_CUDA(cudaStreamSynchronize, stream);
+    ATLC_CHECK_MPI(MPI_Barrier, MPI_COMM_WORLD);
+
+    for (int global_bit = 0; global_bit < log_num_procs; ++global_bit) {
+        int const peer = proc_num ^ (1 << global_bit);
+
+        ATLC_CHECK_NCCL(ncclGroupStart);
+
+        ATLC_CHECK_NCCL(
+            ncclSend,
+            state_data_device,
+            warmup_count,
+            ncclDouble,
+            peer,
+            nccl_comm,
+            stream);
+
+        ATLC_CHECK_NCCL(
+            ncclRecv,
+            swap_buffer,
+            warmup_count,
+            ncclDouble,
+            peer,
+            nccl_comm,
+            stream);
+
+        ATLC_CHECK_NCCL(ncclGroupEnd);
+        ATLC_CHECK_CUDA(cudaStreamSynchronize, stream);
+    }
+
+    ATLC_CHECK_MPI(MPI_Barrier, MPI_COMM_WORLD);
+}
+
 void free_memory() {
     if (cub_temp_buffer_device) {
         ATLC_CHECK_CUDA(cudaFreeAsync, cub_temp_buffer_device, stream);
@@ -2709,6 +2754,7 @@ extern "C" void qcs_simulator_setup(qcs_simulator* sim) {
 }
 
 extern "C" void qcs_simulator_allocate_memory(qcs_simulator* sim) { sim->core->allocate_memory(sim->num_qubits); }
+extern "C" void qcs_simulator_warmup_nccl_communication(qcs_simulator* sim) { sim->core->warmup_nccl_communication(); }
 extern "C" void qcs_simulator_dispose(qcs_simulator* sim) { sim->core->dispose(); delete sim->core; sim->core = NULL; }
 extern "C" int qcs_simulator_get_proc_num(qcs_simulator* sim) { return sim->core->proc_num; }
 extern "C" int qcs_simulator_get_num_procs(qcs_simulator* sim) { return sim->core->num_procs; }
@@ -3085,6 +3131,7 @@ int main(int argc, char** argv)
     qcs_simulator_set_mapping(&sim, mapping.data(), mapping.size());
 
     qcs_simulator_allocate_memory(&sim);
+    qcs_simulator_warmup_nccl_communication(&sim);
 
     int const event_1 = qcs_simulator_event_create(&sim);
     int const event_2 = qcs_simulator_event_create(&sim);

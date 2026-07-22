@@ -68,6 +68,8 @@ def _configure_library(lib: ctypes.CDLL) -> None:
     lib.qcs_simulator_set_num_clbits.restype = None
     lib.qcs_simulator_allocate_memory.argtypes = [sim]
     lib.qcs_simulator_allocate_memory.restype = None
+    lib.qcs_simulator_warmup_nccl_communication.argtypes = [sim]
+    lib.qcs_simulator_warmup_nccl_communication.restype = None
     lib.qcs_simulator_get_proc_num.argtypes = [sim]
     lib.qcs_simulator_get_proc_num.restype = ctypes.c_int
     lib.qcs_simulator_get_num_procs.argtypes = [sim]
@@ -144,6 +146,7 @@ class Simulator:
         self._lib.qcs_simulator_set_num_qubits(self._sim, num_qubits)
         self._lib.qcs_simulator_set_num_clbits(self._sim, self._num_clbits)
         self._lib.qcs_simulator_allocate_memory(self._sim)
+        self._lib.qcs_simulator_warmup_nccl_communication(self._sim)
 
     @property
     def proc_num(self) -> int:

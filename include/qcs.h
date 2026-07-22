@@ -12,6 +12,7 @@ void qcs_simulator_destroy(qcs_simulator* sim);
 void qcs_simulator_init(qcs_simulator* sim);
 void qcs_simulator_setup(qcs_simulator* sim);
 void qcs_simulator_allocate_memory(qcs_simulator* sim);
+void qcs_simulator_warmup_nccl_communication(qcs_simulator* sim);
 void qcs_simulator_dispose(qcs_simulator* sim);
 int qcs_simulator_get_num_procs(qcs_simulator* sim);
 int qcs_simulator_get_proc_num(qcs_simulator* sim);
