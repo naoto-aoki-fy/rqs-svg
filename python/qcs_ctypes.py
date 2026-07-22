@@ -1,11 +1,9 @@
 """ctypes bindings for the RQS-SVG ``libqcs.so`` shared library."""
 
-from __future__ import annotations
-
 import ctypes
 import os
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Iterable, List, Optional, Sequence, Tuple, Union
 
 _C_INT_P = ctypes.POINTER(ctypes.c_int)
 _NULL_INT_P = ctypes.cast(None, _C_INT_P)
@@ -15,7 +13,7 @@ class QcsError(RuntimeError):
     """Raised when the shared library cannot be loaded or initialized."""
 
 
-def _default_library_candidates() -> list[Path]:
+def _default_library_candidates() -> List[Path]:
     here = Path(__file__).resolve()
     repo_root = here.parent.parent
     return [
@@ -50,8 +48,8 @@ def find_library_path() -> Path:
 
 
 def _int_array(
-    values: Sequence[int] | None,
-) -> tuple[ctypes.Array[ctypes.c_int] | None, _C_INT_P, int]:
+    values: Optional[Sequence[int]],
+) -> Tuple[Optional[ctypes.Array], _C_INT_P, int]:
     if values is None:
         return None, _NULL_INT_P, 0
     array = (ctypes.c_int * len(values))(*values)
@@ -118,8 +116,8 @@ class Simulator:
     def __init__(
         self,
         num_qubits: int,
-        num_clbits: int | None = None,
-        library_path: str | os.PathLike[str] | None = None,
+        num_clbits: Optional[int] = None,
+        library_path: Optional[Union[str, os.PathLike]] = None,
     ):
         lib_path = Path(library_path) if library_path else find_library_path()
         self._lib = ctypes.CDLL(str(lib_path))
@@ -169,7 +167,7 @@ class Simulator:
         self._lib.qcs_simulator_get_clbits_string(self._sim, buffer)
         return buffer.value.decode("ascii")
 
-    def save_statevector(self, filename: str | os.PathLike[str]) -> None:
+    def save_statevector(self, filename: Union[str, os.PathLike]) -> None:
         self._lib.qcs_simulator_save_statevector(self._sim, os.fsencode(filename))
 
     def close(self) -> None:
@@ -177,7 +175,7 @@ class Simulator:
             self._lib.qcs_simulator_destroy(self._sim)
             self._closed = True
 
-    def __enter__(self) -> "Simulator":
+    def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:

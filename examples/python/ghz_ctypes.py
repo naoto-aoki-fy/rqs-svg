@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Create and measure a GHZ circuit through the Python ctypes binding."""
 
-from __future__ import annotations
-
 import argparse
 from pathlib import Path
 import sys
