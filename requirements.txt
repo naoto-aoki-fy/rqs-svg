@@ -1,0 +1,2 @@
+qiskit>=2.3.0,<2.4.0
+qiskit_qasm3_import
