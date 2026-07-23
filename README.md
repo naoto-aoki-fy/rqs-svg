@@ -83,6 +83,8 @@ Python bindings are maintained separately at
 You can execute the built simulator via:
 
 ```sh
+source ./env.bash
+
 mpirun -np (NUM_GPUS) ./bin/qcs [--num-samples NUM_SAMPLES|-s NUM_SAMPLES] user_circuit.so
 
 # Save the final statevector to a binary file
