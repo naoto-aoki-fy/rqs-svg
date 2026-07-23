@@ -43,7 +43,6 @@
 #include <atlc/check_nccl.hpp>
 
 #include <qcs.h>
-#include "qcs_args.h"
 
 namespace qcs {
 
@@ -2713,6 +2712,7 @@ extern "C" void qcs_simulator_dispose(qcs_simulator* sim) { sim->core->dispose()
 extern "C" int qcs_simulator_get_proc_num(qcs_simulator* sim) { return sim->core->proc_num; }
 extern "C" int qcs_simulator_get_num_procs(qcs_simulator* sim) { return sim->core->num_procs; }
 extern "C" int qcs_simulator_get_num_qubits(qcs_simulator const* sim) { return sim->num_qubits; }
+extern "C" int qcs_simulator_get_num_clbits(qcs_simulator const* sim) { return sim->num_clbits; }
 extern "C" void qcs_simulator_set_num_qubits(qcs_simulator* sim, int num_qubits) { sim->num_qubits = num_qubits; }
 
 extern "C" void qcs_simulator_set_mapping(qcs_simulator* sim, int const* perm_p2l_array, int perm_p2l_count) {
@@ -2989,133 +2989,3 @@ extern "C" int qcs_simulator_fprintf_master(qcs_simulator* sim, FILE *fp, const 
 extern "C" int qcs_simulator_fprintf_all(qcs_simulator*, FILE *fp, const char *format, ...) { va_list ap; va_start(ap, format); int result = vfprintf(fp, format, ap); va_end(ap); return result; }
 extern "C" int qcs_simulator_fflush_all(qcs_simulator*, FILE *fp) { return fflush(fp); }
 extern "C" int qcs_simulator_fflush_master(qcs_simulator* sim, FILE *fp) { if (qcs_simulator_get_proc_num(sim) != 0) return 0; return fflush(fp); }
-
-#ifndef QCS_SHARED_LIBRARY
-static std::vector<int> parse_mapping_csv(std::string const& mapping_text) {
-    if (mapping_text.empty()) {
-        throw std::runtime_error("mapping string must not be empty");
-    }
-
-    std::vector<int> mapping;
-    std::stringstream ss(mapping_text);
-    std::string token;
-    while (std::getline(ss, token, ',')) {
-        if (token.empty()) {
-            throw std::runtime_error("mapping contains an empty entry");
-        }
-        mapping.push_back(std::stoi(token));
-    }
-
-    return mapping;
-}
-
-static std::vector<int> invert_mapping(std::vector<int> const& perm_p2l, int const num_qubits) {
-    if ((int)perm_p2l.size() != num_qubits) {
-        throw std::runtime_error(atlc::format("mapping size %d does not match num_qubits %d", (int)perm_p2l.size(), num_qubits));
-    }
-
-    std::vector<int> perm_l2p(num_qubits, -1);
-    for (int physical_qubit_num = 0; physical_qubit_num < num_qubits; physical_qubit_num++) {
-        int const logical_qubit_num = perm_p2l[physical_qubit_num];
-        if (logical_qubit_num < 0 || logical_qubit_num >= num_qubits) {
-            throw std::runtime_error(atlc::format("mapping value %d is out of range [0, %d)", logical_qubit_num, num_qubits));
-        }
-        if (perm_l2p[logical_qubit_num] != -1) {
-            throw std::runtime_error(atlc::format("mapping value %d appears multiple times", logical_qubit_num));
-        }
-        perm_l2p[logical_qubit_num] = physical_qubit_num;
-    }
-
-    return perm_l2p;
-}
-
-int main(int argc, char** argv)
-{
-    gengetopt_args_info parsed_options;
-    if (cmdline_parser(argc, argv, &parsed_options) != 0) {
-        throw std::runtime_error("failed to parse command-line options");
-    }
-    ATLC_DEFER_FUNC(cmdline_parser_free, &parsed_options);
-
-    if (parsed_options.inputs_num != 1) {
-        throw std::runtime_error("user circuit shared object path is required");
-    }
-
-    qcs_simulator sim;
-    qcs_simulator_setup(&sim);
-    ATLC_DEFER_FUNC(qcs_simulator_dispose, &sim);
-
-    std::string const usercircuit_so_path = parsed_options.inputs[0];
-    int const num_samples = parsed_options.num_samples_arg;
-    std::string const output_statevector_path = parsed_options.output_statevector_given > 0
-        ? parsed_options.output_statevector_arg
-        : "";
-    if (num_samples <= 0) {
-        throw std::runtime_error("num_samples must be greater than 0");
-    }
-
-    char const* const usercircuit_so_abspath = realpath(usercircuit_so_path.c_str(), NULL);
-    if (usercircuit_so_abspath == NULL) {
-        throw std::runtime_error("realpath returned NULL");
-    }
-    ATLC_DEFER_FUNC(free, (void*)usercircuit_so_abspath);
-
-    void* usercircuit_dl = dlopen(usercircuit_so_abspath, RTLD_LAZY);
-    if (usercircuit_dl == NULL) { throw std::runtime_error("dlopen failed"); }
-    ATLC_DEFER_FUNC(dlclose, usercircuit_dl);
-
-    auto circuit_init = reinterpret_cast<void(*)(qcs_simulator*)>(dlsym(usercircuit_dl, "circuit_init"));
-    auto circuit_run = reinterpret_cast<void(*)(qcs_simulator*)>(dlsym(usercircuit_dl, "circuit_run"));
-
-    circuit_init(&sim);
-
-    std::vector<int> mapping;
-    if (parsed_options.mapping_given > 0) {
-        mapping = parse_mapping_csv(parsed_options.mapping_arg);
-    } else {
-        mapping.resize(qcs_simulator_get_num_qubits(&sim));
-        for (int qubit_num = 0; qubit_num < qcs_simulator_get_num_qubits(&sim); qubit_num++) {
-            mapping[qubit_num] = qubit_num;
-        }
-    }
-
-    if (parsed_options.reversed_mapping_flag) {
-        mapping = invert_mapping(mapping, qcs_simulator_get_num_qubits(&sim));
-    }
-    qcs_simulator_set_mapping(&sim, mapping.data(), mapping.size());
-
-    qcs_simulator_allocate_memory(&sim);
-
-    int const event_1 = qcs_simulator_event_create(&sim);
-    int const event_2 = qcs_simulator_event_create(&sim);
-
-    for (int sample_num = 0; sample_num < num_samples; sample_num++) {
-
-        qcs_simulator_event_record(&sim, event_1);
-
-        circuit_run(&sim);
-
-        qcs_simulator_event_record(&sim, event_2);
-
-        double const elapsed_time = qcs_simulator_event_get_elapsed_time(&sim, event_1, event_2);
-
-        std::vector<char> clbits_string(sim.num_clbits + 1);
-        qcs_simulator_get_clbits_string(&sim, clbits_string.data());
-        qcs_simulator_fprintf_master(&sim, stdout, "{\"sample_num\": %d, \"clbits\": \"%s\", \"elapsed_time\": %.18g}\n", sample_num, clbits_string.data(), elapsed_time);
-        qcs_simulator_fflush_master(&sim, stdout);
-
-        if (sample_num != num_samples - 1) {
-            qcs_simulator_reinitialize_mapping(&sim);
-            qcs_simulator_set_zero_state(&sim);
-            qcs_simulator_reset_clbits(&sim);
-            qcs_simulator_reset_measurement_state(&sim);
-        }
-    }
-
-    if (!output_statevector_path.empty()) {
-        qcs_simulator_save_statevector(&sim, output_statevector_path.c_str());
-    }
-
-    return 0;
-}
-#endif

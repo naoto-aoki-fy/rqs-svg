@@ -16,6 +16,7 @@ void qcs_simulator_dispose(qcs_simulator* sim);
 int qcs_simulator_get_num_procs(qcs_simulator* sim);
 int qcs_simulator_get_proc_num(qcs_simulator* sim);
 int qcs_simulator_get_num_qubits(const qcs_simulator* sim);
+int qcs_simulator_get_num_clbits(const qcs_simulator* sim);
 void qcs_simulator_set_num_qubits(qcs_simulator* sim, int num_qubits);
 void qcs_simulator_set_mapping(qcs_simulator* sim, const int* perm_p2l, int perm_p2l_count);
 void qcs_simulator_set_num_clbits(qcs_simulator* sim, int num_clbits);

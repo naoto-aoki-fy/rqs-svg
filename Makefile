@@ -4,7 +4,7 @@ NVCC ?= nvcc --forward-unknown-to-host-compiler
 INCLUDE ?= -I./include
 NVCC_CFLAGS = $(CFLAGS_VENDOR) -Wformat=2 $(INCLUDE) -O3 -rdynamic -std=c++17 -Wno-deprecated-gpu-targets $(GENCODE_FLAGS)
 NVCC_LDFLAGS = $(LDFLAGS_VENDOR) $(LDLIBS) --cudart=shared
-NVCC_SO_CFLAGS = $(NVCC_CFLAGS) -DQCS_SHARED_LIBRARY -Xcompiler -fPIC
+NVCC_SO_CFLAGS = $(NVCC_CFLAGS) -fPIC
 NVCC_SO_LDFLAGS = $(NVCC_LDFLAGS) -shared
 MPIRUN ?= mpirun
 MPIRUN_FLAGS ?= -np $(shell nvidia-smi -L 2>/dev/null | wc -l)
@@ -23,9 +23,9 @@ sharedlibrary: $(LIBQCS_SO)
 .PHONY: libqcs.so
 libqcs.so: $(LIBQCS_SO)
 
-$(QCS_BIN): src/qcs.cu src/qcs_args.c src/qcs_args.h include/qcs.h
+$(QCS_BIN): src/qcs_main.cpp src/qcs_args.c src/qcs_args.h include/qcs.h $(LIBQCS_SO)
 	mkdir -p $(dir $@)
-	$(NVCC) $(NVCC_CFLAGS) $(NVCC_LDFLAGS) src/qcs.cu src/qcs_args.c -o $@
+	$(NVCC) $(NVCC_CFLAGS) src/qcs_main.cpp src/qcs_args.c -L$(dir $(LIBQCS_SO)) -lqcs -rpath $(shell realpath lib) -rpath '$$ORIGIN/../lib' $(NVCC_LDFLAGS) -o $@
 
 $(LIBQCS_SO): src/qcs.cu include/qcs.h
 	mkdir -p $(dir $@)
