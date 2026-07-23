@@ -32,14 +32,6 @@ To build RQS-SVG as a shared library:
 make sharedlibrary
 ```
 
-### CUDA 10.x Note
-
-For CUDA 10.x, it is recommended using
-[nvcc-wrapper](https://github.com/naoto-aoki-fy/nvcc-wrapper)
-and setting
-`NVCC="python3 /path/to/nvcc_wrapper.py"`.
-
-
 ## Compiling Circuit
 
 Use the helper script:
@@ -73,21 +65,8 @@ mpirun -np (NUM_GPUS) ./ghz_from_c
 Code examples for linking against `libqcs.so` live under
 `examples/sharedlibrary/`.
 
-
-## Using the Shared Library from Python
-
-The `python/qcs_ctypes.py` module loads `libqcs.so` with Python's standard
-`ctypes` package and wraps simulator allocation, gate calls, measurement, and
-destruction in a small `Simulator` class. Build the shared library first, then
-run the Python GHZ example with MPI just like the C example:
-
-```sh
-make sharedlibrary
-mpirun -np (NUM_GPUS) python3 examples/python/ghz.py --num-qubits 30 --num-samples 10
-```
-
-If `libqcs.so` is not in the repository root, pass `--library /path/to/libqcs.so`
-or set `QCS_LIBRARY_PATH=/path/to/libqcs.so`.
+Python bindings are maintained separately at
+[naoto-aoki-fy/rqs-svg-py](https://github.com/naoto-aoki-fy/rqs-svg-py).
 
 ## Running
 
