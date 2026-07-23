@@ -1,6 +1,6 @@
 # RQS-SVG
 
-The RQS-SVG is a GPU-accelerated testbed for quantum circuit simulation. The code provides a `simulator` API (see `qcs.h`) implementing common gate operations, state preparation, and measurement using CUDA, MPI, and NCCL. The Makefile builds a standalone `qcs` executable and can also build `libqcs.so` for programs that link against RQS-SVG directly.
+The RQS-SVG is a GPU-accelerated testbed for quantum circuit simulation. The code provides a `simulator` API (see `qcs.h`) implementing common gate operations, state preparation, and measurement using CUDA, MPI, and NCCL. The Makefile builds a standalone `bin/qcs` executable and can also build `lib/libqcs.so` for programs that link against RQS-SVG directly.
 
 ## Building Simulator
 
@@ -20,17 +20,25 @@ GENCODE_FLAGS = -gencode=arch=compute_xx,code=sm_xx
 
 These options can be obtained using the [`nvccoptions`](https://github.com/naoto-aoki-fy/nvccoptions) utility.
 
-Then, `make` will build `qcs`.
+Then, `make` will build `bin/qcs`.
 
 ```sh
 make
 ```
 
-To build RQS-SVG as a shared library:
+To build RQS-SVG as a shared library at `lib/libqcs.so`:
 
 ```sh
 make sharedlibrary
 ```
+
+If you will run programs that load or link against `lib/libqcs.so`, source the provided shell setup file from the repository root or from any other directory:
+
+```sh
+source ./env.bash
+```
+
+The setup file appends this repository's absolute `lib` directory path to `LD_LIBRARY_PATH`.
 
 ## Compiling Circuit
 
@@ -40,10 +48,11 @@ Use the helper script:
 ./compile_circuit.sh user_circuit.c -o user_circuit.so
 ```
 
-The script resolves `DIR_QCS_H` automatically from `BASH_SOURCE` and executes:
+Alternatively:
 
 ```sh
-gcc -fPIC -shared -I(DIR_QCS_H) -std=c11 user_circuit.c -o user_circuit.so
+source ./env.bash
+gcc -fPIC -shared user_circuit.c -o user_circuit.so
 ```
 
 The loadable circuit examples live under `examples/standalone/`.
@@ -58,7 +67,8 @@ Build the shared library and then compile the C example:
 
 ```sh
 make sharedlibrary
-gcc -I./include -L. -Wl,-rpath,"$(realpath .)" examples/sharedlibrary/ghz_from_c.c -lqcs -o ghz_from_c
+source ./env.bash
+gcc examples/sharedlibrary/ghz_from_c.c -lqcs -o ghz_from_c
 mpirun -np (NUM_GPUS) ./ghz_from_c
 ```
 
@@ -73,10 +83,10 @@ Python bindings are maintained separately at
 You can execute the built simulator via:
 
 ```sh
-mpirun -np (NUM_GPUS) ./qcs [--num-samples NUM_SAMPLES|-s NUM_SAMPLES] user_circuit.so
+mpirun -np (NUM_GPUS) ./bin/qcs [--num-samples NUM_SAMPLES|-s NUM_SAMPLES] user_circuit.so
 
 # Save the final statevector to a binary file
-mpirun -np (NUM_GPUS) ./qcs --output-statevector data.bin user_circuit.so
+mpirun -np (NUM_GPUS) ./bin/qcs --output-statevector data.bin user_circuit.so
 ```
 
 ## Acknowledgments

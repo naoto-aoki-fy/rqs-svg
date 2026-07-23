@@ -8,17 +8,27 @@ NVCC_SO_CFLAGS = $(NVCC_CFLAGS) -DQCS_SHARED_LIBRARY -Xcompiler -fPIC
 NVCC_SO_LDFLAGS = $(NVCC_LDFLAGS) -shared
 MPIRUN ?= mpirun
 MPIRUN_FLAGS ?= -np $(shell nvidia-smi -L 2>/dev/null | wc -l)
+QCS_BIN ?= bin/qcs
+LIBQCS_SO ?= lib/libqcs.so
 
 .PHONY: target
-target: qcs
+target: $(QCS_BIN)
+
+.PHONY: qcs
+qcs: $(QCS_BIN)
 
 .PHONY: sharedlibrary
-sharedlibrary: libqcs.so
+sharedlibrary: $(LIBQCS_SO)
 
-qcs: src/qcs.cu src/qcs_args.c src/qcs_args.h include/qcs.h
+.PHONY: libqcs.so
+libqcs.so: $(LIBQCS_SO)
+
+$(QCS_BIN): src/qcs.cu src/qcs_args.c src/qcs_args.h include/qcs.h
+	mkdir -p $(dir $@)
 	$(NVCC) $(NVCC_CFLAGS) $(NVCC_LDFLAGS) src/qcs.cu src/qcs_args.c -o $@
 
-libqcs.so: src/qcs.cu include/qcs.h
+$(LIBQCS_SO): src/qcs.cu include/qcs.h
+	mkdir -p $(dir $@)
 	$(NVCC) $(NVCC_SO_CFLAGS) $(NVCC_SO_LDFLAGS) src/qcs.cu -o $@
 
 .PHONY: gengetopt
@@ -26,9 +36,9 @@ gengetopt: src/qcs_args.ggo
 	gengetopt --input=$< --unamed-opts --file-name=qcs_args --output-dir=src
 
 .PHONY: run
-run: qcs
+run: $(QCS_BIN)
 	$(MPIRUN) $(MPIRUN_FLAGS) ./$<
 
 .PHONY: clean
 clean:
-	$(RM) qcs libqcs.so
+	$(RM) $(QCS_BIN) $(LIBQCS_SO) qcs libqcs.so
