@@ -1,7 +1,7 @@
 -include config.mk
 LDLIBS ?= -lcurand -lnccl -lssl -lcrypto -ldl
 NVCC ?= nvcc --forward-unknown-to-host-compiler
-INCLUDE ?= -I./atlc/include -I./include
+INCLUDE ?= -I./include
 NVCC_CFLAGS = $(CFLAGS_VENDOR) -Wformat=2 $(INCLUDE) -O3 -rdynamic -std=c++17 -Wno-deprecated-gpu-targets $(GENCODE_FLAGS)
 NVCC_LDFLAGS = $(LDFLAGS_VENDOR) $(LDLIBS) --cudart=shared
 NVCC_SO_CFLAGS = $(NVCC_CFLAGS) -DQCS_SHARED_LIBRARY -Xcompiler -fPIC
