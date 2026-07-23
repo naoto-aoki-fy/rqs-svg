@@ -4,8 +4,6 @@ NVCC ?= nvcc --forward-unknown-to-host-compiler
 INCLUDE ?= -I./include
 NVCC_CFLAGS = $(CFLAGS_VENDOR) -Wformat=2 $(INCLUDE) -O3 -rdynamic -std=c++17 -Wno-deprecated-gpu-targets $(GENCODE_FLAGS)
 NVCC_LDFLAGS = $(LDFLAGS_VENDOR) $(LDLIBS) --cudart=shared
-MPIRUN ?= mpirun
-MPIRUN_FLAGS ?= -np $(shell nvidia-smi -L 2>/dev/null | wc -l)
 QCS_BIN ?= bin/qcs
 LIBQCS_SO ?= lib/libqcs.so
 
@@ -18,9 +16,6 @@ qcs: $(QCS_BIN)
 .PHONY: sharedlibrary
 sharedlibrary: $(LIBQCS_SO)
 
-.PHONY: libqcs.so
-libqcs.so: $(LIBQCS_SO)
-
 $(QCS_BIN): src/qcs_main.cpp src/qcs_args.c src/qcs_args.h include/qcs.h $(LIBQCS_SO)
 	mkdir -p $(dir $@)
 	$(NVCC) $(NVCC_CFLAGS) src/qcs_main.cpp src/qcs_args.c -L$(dir $(LIBQCS_SO)) -lqcs -Wl,-rpath,$(shell realpath lib):'$$ORIGIN/../lib' $(NVCC_LDFLAGS) -o $@
@@ -32,10 +27,6 @@ $(LIBQCS_SO): src/qcs.cu include/qcs.h
 .PHONY: gengetopt
 gengetopt: src/qcs_args.ggo
 	gengetopt --input=$< --unamed-opts --file-name=qcs_args --output-dir=src
-
-.PHONY: run
-run: $(QCS_BIN)
-	$(MPIRUN) $(MPIRUN_FLAGS) ./$<
 
 .PHONY: clean
 clean:
