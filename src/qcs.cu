@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <cstdio>
+#include <cstdarg>
 #include <cstring>
 #include <cmath>
 #include <cstdint>
@@ -3001,14 +3002,42 @@ static void qcs_simulator_init(qcs_simulator *sim)
     sim->clbits.clear();
 }
 
-extern "C" qcs_simulator *qcs_simulator_create()
+
+namespace
+{
+    qcs_exception_callback qcs_current_exception_callback = nullptr;
+
+    void qcs_report_exception(char const *message)
+    {
+        if (qcs_current_exception_callback == nullptr)
+            return;
+        qcs_current_exception_callback(message, std::strlen(message));
+    }
+
+    void qcs_report_exception(std::exception const &exception)
+    {
+        qcs_report_exception(exception.what());
+    }
+
+    void qcs_report_unknown_exception()
+    {
+        qcs_report_exception("Unknown C++ exception");
+    }
+}
+
+extern "C" void qcs_set_exception_callback(qcs_exception_callback callback)
+{
+    qcs_current_exception_callback = callback;
+}
+
+qcs_simulator *qcs_simulator_create_cxx()
 {
     qcs_simulator *sim = new qcs_simulator();
     qcs_simulator_setup(sim);
     return sim;
 }
 
-extern "C" void qcs_simulator_destroy(qcs_simulator *sim)
+void qcs_simulator_destroy_cxx(qcs_simulator *sim)
 {
     if (sim == NULL)
     {
@@ -3025,20 +3054,20 @@ static void qcs_simulator_setup(qcs_simulator *sim)
     sim->core->setup();
 }
 
-extern "C" void qcs_simulator_allocate_memory(qcs_simulator *sim) { sim->core->allocate_memory(sim->num_qubits); }
-extern "C" void qcs_simulator_dispose(qcs_simulator *sim)
+void qcs_simulator_allocate_memory_cxx(qcs_simulator *sim) { sim->core->allocate_memory(sim->num_qubits); }
+void qcs_simulator_dispose_cxx(qcs_simulator *sim)
 {
     sim->core->dispose();
     delete sim->core;
     sim->core = NULL;
 }
-extern "C" int qcs_simulator_get_proc_num(qcs_simulator *sim) { return sim->core->proc_num; }
-extern "C" int qcs_simulator_get_num_procs(qcs_simulator *sim) { return sim->core->num_procs; }
-extern "C" int qcs_simulator_get_num_qubits(qcs_simulator const *sim) { return sim->num_qubits; }
-extern "C" int qcs_simulator_get_num_clbits(qcs_simulator const *sim) { return sim->num_clbits; }
-extern "C" void qcs_simulator_set_num_qubits(qcs_simulator *sim, int num_qubits) { sim->num_qubits = num_qubits; }
+int qcs_simulator_get_proc_num_cxx(qcs_simulator *sim) { return sim->core->proc_num; }
+int qcs_simulator_get_num_procs_cxx(qcs_simulator *sim) { return sim->core->num_procs; }
+int qcs_simulator_get_num_qubits_cxx(qcs_simulator const *sim) { return sim->num_qubits; }
+int qcs_simulator_get_num_clbits_cxx(qcs_simulator const *sim) { return sim->num_clbits; }
+void qcs_simulator_set_num_qubits_cxx(qcs_simulator *sim, int num_qubits) { sim->num_qubits = num_qubits; }
 
-extern "C" void qcs_simulator_set_mapping(qcs_simulator *sim, int const *perm_p2l_array, int perm_p2l_count)
+void qcs_simulator_set_mapping_cxx(qcs_simulator *sim, int const *perm_p2l_array, int perm_p2l_count)
 {
     std::vector<int> const perm_p2l = qcs_vector_from_array(perm_p2l_array, perm_p2l_count);
     if (sim->num_qubits <= 0)
@@ -3057,38 +3086,38 @@ extern "C" void qcs_simulator_set_mapping(qcs_simulator *sim, int const *perm_p2
     sim->core->initial_perm_p2l = perm_p2l;
 }
 
-extern "C" void qcs_simulator_set_num_clbits(qcs_simulator *sim, int num_clbits)
+void qcs_simulator_set_num_clbits_cxx(qcs_simulator *sim, int num_clbits)
 {
     sim->num_clbits = num_clbits;
     sim->clbits.resize(num_clbits);
 }
-extern "C" int qcs_simulator_measure(qcs_simulator *sim, int qubit_num) { return sim->core->measure_qubit(qubit_num); }
-extern "C" int qcs_simulator_measure_to_clbit(qcs_simulator *sim, int qubit_num, int clbit_num)
+int qcs_simulator_measure_cxx(qcs_simulator *sim, int qubit_num) { return sim->core->measure_qubit(qubit_num); }
+int qcs_simulator_measure_to_clbit_cxx(qcs_simulator *sim, int qubit_num, int clbit_num)
 {
     int const result = qcs_simulator_measure(sim, qubit_num);
     sim->clbits[clbit_num] = result;
     return result;
 }
-extern "C" int qcs_simulator_read(qcs_simulator *sim, int clbit_num) { return sim->clbits[clbit_num]; }
-extern "C" void qcs_simulator_reset(qcs_simulator *sim, int qubit_num)
+int qcs_simulator_read_cxx(qcs_simulator *sim, int clbit_num) { return sim->clbits[clbit_num]; }
+void qcs_simulator_reset_cxx(qcs_simulator *sim, int qubit_num)
 {
     if (qcs_simulator_measure(sim, qubit_num))
         qcs_simulator_gate_x(sim, &qubit_num, 1, NULL, 0, NULL, 0);
 }
-extern "C" void qcs_simulator_set_zero_state(qcs_simulator *sim) { sim->core->initialize_zero(); }
-extern "C" void qcs_simulator_set_sequential_state(qcs_simulator *sim) { sim->core->initialize_sequential(); }
-extern "C" void qcs_simulator_set_flat_state(qcs_simulator *sim) { sim->core->initialize_flat(); }
-extern "C" void qcs_simulator_set_entangled_state(qcs_simulator *sim) { sim->core->initialize_entangled(); }
-extern "C" void qcs_simulator_set_random_state(qcs_simulator *sim) { sim->core->initialize_use_curand(); }
+void qcs_simulator_set_zero_state_cxx(qcs_simulator *sim) { sim->core->initialize_zero(); }
+void qcs_simulator_set_sequential_state_cxx(qcs_simulator *sim) { sim->core->initialize_sequential(); }
+void qcs_simulator_set_flat_state_cxx(qcs_simulator *sim) { sim->core->initialize_flat(); }
+void qcs_simulator_set_entangled_state_cxx(qcs_simulator *sim) { sim->core->initialize_entangled(); }
+void qcs_simulator_set_random_state_cxx(qcs_simulator *sim) { sim->core->initialize_use_curand(); }
 
-extern "C" void qcs_simulator_gate_global_phase(qcs_simulator *sim, double theta, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_global_phase_cxx(qcs_simulator *sim, double theta, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
     auto const ctrls = qcs_vector_from_array(ctrl_qubit_num_list, ctrl_qubit_num_count);
     sim->core->operate_gate(qcs::gate::global_phase(theta), {}, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_swap(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_swap_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3096,7 +3125,7 @@ extern "C" void qcs_simulator_gate_swap(qcs_simulator *sim, int const *target_qu
     sim->core->operate_gate(qcs::gate::swap(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_iswap(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_iswap_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3104,7 +3133,7 @@ extern "C" void qcs_simulator_gate_iswap(qcs_simulator *sim, int const *target_q
     sim->core->operate_gate(qcs::gate::iswap(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_h(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_h_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3112,7 +3141,7 @@ extern "C" void qcs_simulator_gate_h(qcs_simulator *sim, int const *target_qubit
     sim->core->operate_gate(qcs::gate::hadamard(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_x(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_x_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3120,7 +3149,7 @@ extern "C" void qcs_simulator_gate_x(qcs_simulator *sim, int const *target_qubit
     sim->core->operate_gate(qcs::gate::x(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_y(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_y_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3128,7 +3157,7 @@ extern "C" void qcs_simulator_gate_y(qcs_simulator *sim, int const *target_qubit
     sim->core->operate_gate(qcs::gate::y(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_z(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_z_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3136,7 +3165,7 @@ extern "C" void qcs_simulator_gate_z(qcs_simulator *sim, int const *target_qubit
     sim->core->operate_gate(qcs::gate::z(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_s(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_s_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3144,7 +3173,7 @@ extern "C" void qcs_simulator_gate_s(qcs_simulator *sim, int const *target_qubit
     sim->core->operate_gate(qcs::gate::s(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_sdg(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_sdg_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3152,7 +3181,7 @@ extern "C" void qcs_simulator_gate_sdg(qcs_simulator *sim, int const *target_qub
     sim->core->operate_gate(qcs::gate::sdg(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_t(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_t_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3160,7 +3189,7 @@ extern "C" void qcs_simulator_gate_t(qcs_simulator *sim, int const *target_qubit
     sim->core->operate_gate(qcs::gate::t(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_tdg(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_tdg_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3168,7 +3197,7 @@ extern "C" void qcs_simulator_gate_tdg(qcs_simulator *sim, int const *target_qub
     sim->core->operate_gate(qcs::gate::tdg(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_sx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_sx_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3176,7 +3205,7 @@ extern "C" void qcs_simulator_gate_sx(qcs_simulator *sim, int const *target_qubi
     sim->core->operate_gate(qcs::gate::sx(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_sxdg(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_sxdg_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3184,7 +3213,7 @@ extern "C" void qcs_simulator_gate_sxdg(qcs_simulator *sim, int const *target_qu
     sim->core->operate_gate(qcs::gate::sxdg(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_rx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_rx_cxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3192,7 +3221,7 @@ extern "C" void qcs_simulator_gate_rx(qcs_simulator *sim, double theta, int cons
     sim->core->operate_gate(qcs::gate::rx(theta), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_ry(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_ry_cxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3200,7 +3229,7 @@ extern "C" void qcs_simulator_gate_ry(qcs_simulator *sim, double theta, int cons
     sim->core->operate_gate(qcs::gate::ry(theta), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_rz(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_rz_cxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3208,7 +3237,7 @@ extern "C" void qcs_simulator_gate_rz(qcs_simulator *sim, double theta, int cons
     sim->core->operate_gate(qcs::gate::rz(theta), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_u4(qcs_simulator *sim, double theta, double phi, double lambda, double gamma, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_u4_cxx(qcs_simulator *sim, double theta, double phi, double lambda, double gamma, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3216,7 +3245,7 @@ extern "C" void qcs_simulator_gate_u4(qcs_simulator *sim, double theta, double p
     sim->core->operate_gate(qcs::gate::u4(theta, phi, lambda, gamma), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_u3(qcs_simulator *sim, double theta, double phi, double lambda, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_u3_cxx(qcs_simulator *sim, double theta, double phi, double lambda, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3224,7 +3253,7 @@ extern "C" void qcs_simulator_gate_u3(qcs_simulator *sim, double theta, double p
     sim->core->operate_gate(qcs::gate::u3(theta, phi, lambda), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_u2(qcs_simulator *sim, double phi, double lambda, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_u2_cxx(qcs_simulator *sim, double phi, double lambda, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3232,7 +3261,7 @@ extern "C" void qcs_simulator_gate_u2(qcs_simulator *sim, double phi, double lam
     sim->core->operate_gate(qcs::gate::u2(phi, lambda), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_u1(qcs_simulator *sim, double lambda, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_u1_cxx(qcs_simulator *sim, double lambda, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3240,7 +3269,7 @@ extern "C" void qcs_simulator_gate_u1(qcs_simulator *sim, double lambda, int con
     sim->core->operate_gate(qcs::gate::u1(lambda), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_u(qcs_simulator *sim, double theta, double phi, double lambda, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_u_cxx(qcs_simulator *sim, double theta, double phi, double lambda, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3248,7 +3277,7 @@ extern "C" void qcs_simulator_gate_u(qcs_simulator *sim, double theta, double ph
     sim->core->operate_gate(qcs::gate::u(theta, phi, lambda), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_p(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_p_cxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3256,7 +3285,7 @@ extern "C" void qcs_simulator_gate_p(qcs_simulator *sim, double theta, int const
     sim->core->operate_gate(qcs::gate::p(theta), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_id(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_id_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3264,7 +3293,7 @@ extern "C" void qcs_simulator_gate_id(qcs_simulator *sim, int const *target_qubi
     sim->core->operate_gate(qcs::gate::id(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_r(qcs_simulator *sim, double theta, double phi, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_r_cxx(qcs_simulator *sim, double theta, double phi, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3272,7 +3301,7 @@ extern "C" void qcs_simulator_gate_r(qcs_simulator *sim, double theta, double ph
     sim->core->operate_gate(qcs::gate::r(theta, phi), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_rzz(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_rzz_cxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3280,7 +3309,7 @@ extern "C" void qcs_simulator_gate_rzz(qcs_simulator *sim, double theta, int con
     sim->core->operate_gate(qcs::gate::rzz(theta), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_rxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_rxx_cxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3288,7 +3317,7 @@ extern "C" void qcs_simulator_gate_rxx(qcs_simulator *sim, double theta, int con
     sim->core->operate_gate(qcs::gate::rxx(theta), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_ryy(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_ryy_cxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3296,7 +3325,7 @@ extern "C" void qcs_simulator_gate_ryy(qcs_simulator *sim, double theta, int con
     sim->core->operate_gate(qcs::gate::ryy(theta), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_rzx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_rzx_cxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3304,7 +3333,7 @@ extern "C" void qcs_simulator_gate_rzx(qcs_simulator *sim, double theta, int con
     sim->core->operate_gate(qcs::gate::rzx(theta), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_dcx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_dcx_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3312,7 +3341,7 @@ extern "C" void qcs_simulator_gate_dcx(qcs_simulator *sim, int const *target_qub
     sim->core->operate_gate(qcs::gate::dcx(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_ecr(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_ecr_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3320,7 +3349,7 @@ extern "C" void qcs_simulator_gate_ecr(qcs_simulator *sim, int const *target_qub
     sim->core->operate_gate(qcs::gate::ecr(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_xx_plus_yy(qcs_simulator *sim, double theta, double beta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_xx_plus_yy_cxx(qcs_simulator *sim, double theta, double beta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3328,7 +3357,7 @@ extern "C" void qcs_simulator_gate_xx_plus_yy(qcs_simulator *sim, double theta, 
     sim->core->operate_gate(qcs::gate::xx_plus_yy(theta, beta), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_xx_minus_yy(qcs_simulator *sim, double theta, double beta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_xx_minus_yy_cxx(qcs_simulator *sim, double theta, double beta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3336,7 +3365,7 @@ extern "C" void qcs_simulator_gate_xx_minus_yy(qcs_simulator *sim, double theta,
     sim->core->operate_gate(qcs::gate::xx_minus_yy(theta, beta), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_rccx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_rccx_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3344,7 +3373,7 @@ extern "C" void qcs_simulator_gate_rccx(qcs_simulator *sim, int const *target_qu
     sim->core->operate_gate(qcs::gate::rccx(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_gate_rcccx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_rcccx_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3352,32 +3381,32 @@ extern "C" void qcs_simulator_gate_rcccx(qcs_simulator *sim, int const *target_q
     sim->core->operate_gate(qcs::gate::rcccx(), targets, negctrls, ctrls);
 }
 
-extern "C" void qcs_simulator_get_clbits(qcs_simulator const *sim, int *clbits)
+void qcs_simulator_get_clbits_cxx(qcs_simulator const *sim, int *clbits)
 {
     for (int i = 0; i < sim->num_clbits; ++i)
         clbits[i] = sim->clbits[i] ? 1 : 0;
 }
-extern "C" void qcs_simulator_reset_clbits(qcs_simulator *sim)
+void qcs_simulator_reset_clbits_cxx(qcs_simulator *sim)
 {
     for (int i = 0; i < (int)sim->clbits.size(); ++i)
         sim->clbits[i] = 0;
 }
-extern "C" void qcs_simulator_reset_measurement_state(qcs_simulator *sim) { sim->core->clear_measurement_state(); }
-extern "C" void qcs_simulator_reinitialize_mapping(qcs_simulator *sim) { sim->core->reinitialize_mapping(); }
-extern "C" void qcs_simulator_get_clbits_string(qcs_simulator const *sim, char *clbits_string)
+void qcs_simulator_reset_measurement_state_cxx(qcs_simulator *sim) { sim->core->clear_measurement_state(); }
+void qcs_simulator_reinitialize_mapping_cxx(qcs_simulator *sim) { sim->core->reinitialize_mapping(); }
+void qcs_simulator_get_clbits_string_cxx(qcs_simulator const *sim, char *clbits_string)
 {
     int out = 0;
     for (auto it = sim->clbits.rbegin(); it != sim->clbits.rend(); ++it)
         clbits_string[out++] = *it ? '1' : '0';
     clbits_string[out] = '\0';
 }
-extern "C" void qcs_simulator_save_statevector(qcs_simulator *sim, char const *outfn) { sim->core->save_statevector(outfn); }
-extern "C" int qcs_simulator_event_create(qcs_simulator *sim) { return sim->core->event_create(); }
-extern "C" void qcs_simulator_event_record(qcs_simulator *sim, int event_num) { sim->core->event_record(event_num); }
-extern "C" double qcs_simulator_event_get_elapsed_time(qcs_simulator *sim, int start_event_num, int stop_event_num) { return sim->core->event_get_elapsed_time(start_event_num, stop_event_num); }
-extern "C" int qcs_simulator_fprintf_master(qcs_simulator *sim, FILE *fp, const char *format, ...)
+void qcs_simulator_save_statevector_cxx(qcs_simulator *sim, char const *outfn) { sim->core->save_statevector(outfn); }
+int qcs_simulator_event_create_cxx(qcs_simulator *sim) { return sim->core->event_create(); }
+void qcs_simulator_event_record_cxx(qcs_simulator *sim, int event_num) { sim->core->event_record(event_num); }
+double qcs_simulator_event_get_elapsed_time_cxx(qcs_simulator *sim, int start_event_num, int stop_event_num) { return sim->core->event_get_elapsed_time(start_event_num, stop_event_num); }
+int qcs_simulator_fprintf_master_cxx(qcs_simulator *sim, FILE *fp, const char *format, ...)
 {
-    if (qcs_simulator_get_proc_num(sim) != 0)
+    if (qcs_simulator_get_proc_num_cxx(sim) != 0)
         return 0;
     va_list ap;
     va_start(ap, format);
@@ -3385,7 +3414,7 @@ extern "C" int qcs_simulator_fprintf_master(qcs_simulator *sim, FILE *fp, const 
     va_end(ap);
     return result;
 }
-extern "C" int qcs_simulator_fprintf_all(qcs_simulator *, FILE *fp, const char *format, ...)
+int qcs_simulator_fprintf_all_cxx(qcs_simulator *, FILE *fp, const char *format, ...)
 {
     va_list ap;
     va_start(ap, format);
@@ -3393,10 +3422,1160 @@ extern "C" int qcs_simulator_fprintf_all(qcs_simulator *, FILE *fp, const char *
     va_end(ap);
     return result;
 }
-extern "C" int qcs_simulator_fflush_all(qcs_simulator *, FILE *fp) { return fflush(fp); }
-extern "C" int qcs_simulator_fflush_master(qcs_simulator *sim, FILE *fp)
+int qcs_simulator_fflush_all_cxx(qcs_simulator *, FILE *fp) { return fflush(fp); }
+int qcs_simulator_fflush_master_cxx(qcs_simulator *sim, FILE *fp)
 {
-    if (qcs_simulator_get_proc_num(sim) != 0)
+    if (qcs_simulator_get_proc_num_cxx(sim) != 0)
         return 0;
     return fflush(fp);
+}
+
+
+extern "C" qcs_simulator* qcs_simulator_create(void)
+{
+    try
+    {
+        return qcs_simulator_create_cxx();
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+    return nullptr;
+}
+
+extern "C" void qcs_simulator_destroy(qcs_simulator* sim)
+{
+    try
+    {
+        qcs_simulator_destroy_cxx(sim);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_allocate_memory(qcs_simulator* sim)
+{
+    try
+    {
+        qcs_simulator_allocate_memory_cxx(sim);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_dispose(qcs_simulator* sim)
+{
+    try
+    {
+        qcs_simulator_dispose_cxx(sim);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" int qcs_simulator_get_num_procs(qcs_simulator* sim)
+{
+    try
+    {
+        return qcs_simulator_get_num_procs_cxx(sim);
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+    return 0;
+}
+
+extern "C" int qcs_simulator_get_proc_num(qcs_simulator* sim)
+{
+    try
+    {
+        return qcs_simulator_get_proc_num_cxx(sim);
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+    return 0;
+}
+
+extern "C" int qcs_simulator_get_num_qubits(const qcs_simulator* sim)
+{
+    try
+    {
+        return qcs_simulator_get_num_qubits_cxx(sim);
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+    return 0;
+}
+
+extern "C" int qcs_simulator_get_num_clbits(const qcs_simulator* sim)
+{
+    try
+    {
+        return qcs_simulator_get_num_clbits_cxx(sim);
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+    return 0;
+}
+
+extern "C" void qcs_simulator_set_num_qubits(qcs_simulator* sim, int num_qubits)
+{
+    try
+    {
+        qcs_simulator_set_num_qubits_cxx(sim, num_qubits);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_set_mapping(qcs_simulator* sim, const int* perm_p2l, int perm_p2l_count)
+{
+    try
+    {
+        qcs_simulator_set_mapping_cxx(sim, perm_p2l, perm_p2l_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_set_num_clbits(qcs_simulator* sim, int num_clbits)
+{
+    try
+    {
+        qcs_simulator_set_num_clbits_cxx(sim, num_clbits);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_get_clbits(const qcs_simulator* sim, int* clbits)
+{
+    try
+    {
+        qcs_simulator_get_clbits_cxx(sim, clbits);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_get_clbits_string(const qcs_simulator* sim, char* clbits_string)
+{
+    try
+    {
+        qcs_simulator_get_clbits_string_cxx(sim, clbits_string);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_reset(qcs_simulator* sim, int qubit_num)
+{
+    try
+    {
+        qcs_simulator_reset_cxx(sim, qubit_num);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_set_zero_state(qcs_simulator* sim)
+{
+    try
+    {
+        qcs_simulator_set_zero_state_cxx(sim);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_set_sequential_state(qcs_simulator* sim)
+{
+    try
+    {
+        qcs_simulator_set_sequential_state_cxx(sim);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_set_flat_state(qcs_simulator* sim)
+{
+    try
+    {
+        qcs_simulator_set_flat_state_cxx(sim);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_set_entangled_state(qcs_simulator* sim)
+{
+    try
+    {
+        qcs_simulator_set_entangled_state_cxx(sim);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_set_random_state(qcs_simulator* sim)
+{
+    try
+    {
+        qcs_simulator_set_random_state_cxx(sim);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_reset_clbits(qcs_simulator* sim)
+{
+    try
+    {
+        qcs_simulator_reset_clbits_cxx(sim);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_reset_measurement_state(qcs_simulator* sim)
+{
+    try
+    {
+        qcs_simulator_reset_measurement_state_cxx(sim);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_reinitialize_mapping(qcs_simulator* sim)
+{
+    try
+    {
+        qcs_simulator_reinitialize_mapping_cxx(sim);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_global_phase(qcs_simulator* sim, double theta, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_global_phase_cxx(sim, theta, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_h(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_h_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_x(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_x_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_y(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_y_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_z(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_z_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_s(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_s_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_sdg(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_sdg_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_t(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_t_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_tdg(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_tdg_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_sx(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_sx_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_rx(qcs_simulator* sim, double theta, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_rx_cxx(sim, theta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_ry(qcs_simulator* sim, double theta, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_ry_cxx(sim, theta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_rz(qcs_simulator* sim, double theta, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_rz_cxx(sim, theta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_u4(qcs_simulator* sim, double theta, double phi, double lambda, double gamma, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_u4_cxx(sim, theta, phi, lambda, gamma, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_u3(qcs_simulator* sim, double theta, double phi, double lambda, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_u3_cxx(sim, theta, phi, lambda, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_u2(qcs_simulator* sim, double phi, double lambda, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_u2_cxx(sim, phi, lambda, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_u1(qcs_simulator* sim, double lambda, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_u1_cxx(sim, lambda, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_u(qcs_simulator* sim, double theta, double phi, double lambda, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_u_cxx(sim, theta, phi, lambda, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_p(qcs_simulator* sim, double theta, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_p_cxx(sim, theta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_swap(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_swap_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_iswap(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_iswap_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_id(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_id_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_sxdg(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_sxdg_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_r(qcs_simulator* sim, double theta, double phi, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_r_cxx(sim, theta, phi, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_rxx(qcs_simulator* sim, double theta, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_rxx_cxx(sim, theta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_ryy(qcs_simulator* sim, double theta, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_ryy_cxx(sim, theta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_rzz(qcs_simulator* sim, double theta, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_rzz_cxx(sim, theta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_rzx(qcs_simulator* sim, double theta, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_rzx_cxx(sim, theta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_dcx(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_dcx_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_ecr(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_ecr_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_xx_plus_yy(qcs_simulator* sim, double theta, double beta, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_xx_plus_yy_cxx(sim, theta, beta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_xx_minus_yy(qcs_simulator* sim, double theta, double beta, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_xx_minus_yy_cxx(sim, theta, beta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_rccx(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_rccx_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" void qcs_simulator_gate_rcccx(qcs_simulator* sim, const int* target_qubit_num_list, int target_qubit_num_count, const int* negctrl_qubit_num_list, int negctrl_qubit_num_count, const int* ctrl_qubit_num_list, int ctrl_qubit_num_count)
+{
+    try
+    {
+        qcs_simulator_gate_rcccx_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" int qcs_simulator_measure(qcs_simulator* sim, int qubit_num)
+{
+    try
+    {
+        return qcs_simulator_measure_cxx(sim, qubit_num);
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+    return 0;
+}
+
+extern "C" int qcs_simulator_measure_to_clbit(qcs_simulator* sim, int qubit_num, int clbit_num)
+{
+    try
+    {
+        return qcs_simulator_measure_to_clbit_cxx(sim, qubit_num, clbit_num);
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+    return 0;
+}
+
+extern "C" int qcs_simulator_read(qcs_simulator* sim, int clbit_num)
+{
+    try
+    {
+        return qcs_simulator_read_cxx(sim, clbit_num);
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+    return 0;
+}
+
+extern "C" void qcs_simulator_save_statevector(qcs_simulator* sim, const char* outfn)
+{
+    try
+    {
+        qcs_simulator_save_statevector_cxx(sim, outfn);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" int qcs_simulator_event_create(qcs_simulator* sim)
+{
+    try
+    {
+        return qcs_simulator_event_create_cxx(sim);
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+    return 0;
+}
+
+extern "C" void qcs_simulator_event_record(qcs_simulator* sim, int event_num)
+{
+    try
+    {
+        qcs_simulator_event_record_cxx(sim, event_num);
+        return;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+}
+
+extern "C" double qcs_simulator_event_get_elapsed_time(qcs_simulator* sim, int start_event_num, int stop_event_num)
+{
+    try
+    {
+        return qcs_simulator_event_get_elapsed_time_cxx(sim, start_event_num, stop_event_num);
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+    return 0.0;
+}
+
+extern "C" int qcs_simulator_fprintf_master(qcs_simulator* sim, FILE *fp, const char *format, ...)
+{
+    try
+    {
+        if (qcs_simulator_get_proc_num_cxx(sim) != 0)
+            return 0;
+        va_list ap;
+        va_start(ap, format);
+        int result = vfprintf(fp, format, ap);
+        va_end(ap);
+        return result;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+    return 0;
+}
+
+extern "C" int qcs_simulator_fprintf_all(qcs_simulator* sim, FILE *fp, const char *format, ...)
+{
+    try
+    {
+        va_list ap;
+        va_start(ap, format);
+        int result = vfprintf(fp, format, ap);
+        va_end(ap);
+        return result;
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+    return 0;
+}
+
+extern "C" int qcs_simulator_fflush_master(qcs_simulator* sim, FILE* stream)
+{
+    try
+    {
+        return qcs_simulator_fflush_master_cxx(sim, stream);
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+    return 0;
+}
+
+extern "C" int qcs_simulator_fflush_all(qcs_simulator* sim, FILE* stream)
+{
+    try
+    {
+        return qcs_simulator_fflush_all_cxx(sim, stream);
+    }
+    catch (std::exception const &exception)
+    {
+        qcs_report_exception(exception);
+    }
+    catch (...)
+    {
+        qcs_report_unknown_exception();
+    }
+    return 0;
 }
