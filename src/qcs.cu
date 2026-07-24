@@ -2977,6 +2977,9 @@ struct qcs_simulator
     std::vector<bool> clbits;
 };
 
+static void qcs_simulator_init(qcs_simulator *sim);
+static void qcs_simulator_setup(qcs_simulator *sim);
+
 static std::vector<int> qcs_vector_from_array(int const *values, int count)
 {
     if (count < 0)
@@ -2990,7 +2993,7 @@ static std::vector<int> qcs_vector_from_array(int const *values, int count)
     return std::vector<int>(values, values + count);
 }
 
-extern "C" void qcs_simulator_init(qcs_simulator *sim)
+static void qcs_simulator_init(qcs_simulator *sim)
 {
     sim->num_qubits = 0;
     sim->num_clbits = 0;
@@ -3015,7 +3018,7 @@ extern "C" void qcs_simulator_destroy(qcs_simulator *sim)
     delete sim;
 }
 
-extern "C" void qcs_simulator_setup(qcs_simulator *sim)
+static void qcs_simulator_setup(qcs_simulator *sim)
 {
     qcs_simulator_init(sim);
     sim->core = new qcs::simulator_core();
