@@ -75,7 +75,12 @@ int main(int argc, char **argv)
         throw std::runtime_error("user circuit shared object path is required");
     }
 
-    std::unique_ptr<qcs_simulator, void (*)(qcs_simulator *)> sim(qcs_simulator_create(), qcs_simulator_destroy);
+    qcs_simulator *sim_ptr = nullptr;
+    if (!qcs_simulator_create(&sim_ptr))
+    {
+        throw std::runtime_error("qcs_simulator_create failed");
+    }
+    std::unique_ptr<qcs_simulator, int (*)(qcs_simulator *)> sim(sim_ptr, qcs_simulator_destroy);
 
     std::string const usercircuit_so_path = parsed_options.inputs[0];
     int const num_samples = parsed_options.num_samples_arg;
@@ -113,8 +118,13 @@ int main(int argc, char **argv)
     }
     else
     {
-        mapping.resize(qcs_simulator_get_num_qubits(sim.get()));
-        for (int qubit_num = 0; qubit_num < qcs_simulator_get_num_qubits(sim.get()); qubit_num++)
+        int num_qubits = 0;
+        if (!qcs_simulator_get_num_qubits(sim.get(), &num_qubits))
+        {
+            throw std::runtime_error("qcs_simulator_get_num_qubits failed");
+        }
+        mapping.resize(num_qubits);
+        for (int qubit_num = 0; qubit_num < num_qubits; qubit_num++)
         {
             mapping[qubit_num] = qubit_num;
         }
@@ -122,14 +132,23 @@ int main(int argc, char **argv)
 
     if (parsed_options.reversed_mapping_flag)
     {
-        mapping = invert_mapping(mapping, qcs_simulator_get_num_qubits(sim.get()));
+        int num_qubits = 0;
+        if (!qcs_simulator_get_num_qubits(sim.get(), &num_qubits))
+        {
+            throw std::runtime_error("qcs_simulator_get_num_qubits failed");
+        }
+        mapping = invert_mapping(mapping, num_qubits);
     }
     qcs_simulator_set_mapping(sim.get(), mapping.data(), mapping.size());
 
     qcs_simulator_allocate_memory(sim.get());
 
-    int const event_1 = qcs_simulator_event_create(sim.get());
-    int const event_2 = qcs_simulator_event_create(sim.get());
+    int event_1 = 0;
+    int event_2 = 0;
+    if (!qcs_simulator_event_create(sim.get(), &event_1) || !qcs_simulator_event_create(sim.get(), &event_2))
+    {
+        throw std::runtime_error("qcs_simulator_event_create failed");
+    }
 
     for (int sample_num = 0; sample_num < num_samples; sample_num++)
     {
@@ -140,11 +159,25 @@ int main(int argc, char **argv)
 
         qcs_simulator_event_record(sim.get(), event_2);
 
-        double const elapsed_time = qcs_simulator_event_get_elapsed_time(sim.get(), event_1, event_2);
+        double elapsed_time = 0.0;
+        if (!qcs_simulator_event_get_elapsed_time(sim.get(), event_1, event_2, &elapsed_time))
+        {
+            throw std::runtime_error("qcs_simulator_event_get_elapsed_time failed");
+        }
 
-        std::vector<char> clbits_string(qcs_simulator_get_num_clbits(sim.get()) + 1);
+        int num_clbits = 0;
+        if (!qcs_simulator_get_num_clbits(sim.get(), &num_clbits))
+        {
+            throw std::runtime_error("qcs_simulator_get_num_clbits failed");
+        }
+        std::vector<char> clbits_string(num_clbits + 1);
         qcs_simulator_get_clbits_string(sim.get(), clbits_string.data());
-        if (qcs_simulator_get_proc_num(sim.get()) == 0)
+        int proc_num = 0;
+        if (!qcs_simulator_get_proc_num(sim.get(), &proc_num))
+        {
+            throw std::runtime_error("qcs_simulator_get_proc_num failed");
+        }
+        if (proc_num == 0)
         {
             fprintf(stdout, "{\"sample_num\": %d, \"clbits\": \"%s\", \"elapsed_time\": %.18g}\n", sample_num, clbits_string.data(), elapsed_time);
             fflush(stdout);

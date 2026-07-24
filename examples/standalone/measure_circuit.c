@@ -38,6 +38,7 @@ void circuit_run(qcs_simulator *sim)
 
     for (int qubit_num = 0; qubit_num < num_qubits; qubit_num++)
     {
-        qcs_simulator_measure_to_clbit(sim, qubit_num, qubit_num);
+        int measured = 0;
+        qcs_simulator_measure_to_clbit(sim, qubit_num, qubit_num, &measured);
     }
 }

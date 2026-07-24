@@ -86,8 +86,8 @@ int main(int argc, char **argv)
 
     const int num_clbits = num_qubits;
 
-    qcs_simulator *sim = qcs_simulator_create();
-    if (sim == NULL)
+    qcs_simulator *sim = NULL;
+    if (!qcs_simulator_create(&sim))
     {
         fprintf(stderr, "failed to create qcs simulator\n");
         return EXIT_FAILURE;
@@ -97,8 +97,14 @@ int main(int argc, char **argv)
     qcs_simulator_set_num_clbits(sim, num_clbits);
     qcs_simulator_allocate_memory(sim);
 
-    int const event_1 = qcs_simulator_event_create(sim);
-    int const event_2 = qcs_simulator_event_create(sim);
+    int event_1 = 0;
+    int event_2 = 0;
+    if (!qcs_simulator_event_create(sim, &event_1) || !qcs_simulator_event_create(sim, &event_2))
+    {
+        fprintf(stderr, "failed to create qcs events\n");
+        qcs_simulator_destroy(sim);
+        return EXIT_FAILURE;
+    }
 
     char *const clbits = malloc((size_t)num_clbits + 1);
     if (clbits == NULL)
@@ -124,14 +130,18 @@ int main(int argc, char **argv)
 
         for (int qubit_num = 0; qubit_num < num_qubits; qubit_num++)
         {
-            qcs_simulator_measure_to_clbit(sim, qubit_num, qubit_num);
+            int measured = 0;
+            qcs_simulator_measure_to_clbit(sim, qubit_num, qubit_num, &measured);
         }
 
         qcs_simulator_event_record(sim, event_2);
-        double const elapsed_time = qcs_simulator_event_get_elapsed_time(sim, event_1, event_2);
+        double elapsed_time = 0.0;
+        qcs_simulator_event_get_elapsed_time(sim, event_1, event_2, &elapsed_time);
 
         qcs_simulator_get_clbits_string(sim, clbits);
-        if (qcs_simulator_get_proc_num(sim) == 0)
+        int proc_num = 0;
+        qcs_simulator_get_proc_num(sim, &proc_num);
+        if (proc_num == 0)
         {
             fprintf(stdout, "{\"sample_num\": %d, \"clbits\": \"%s\", \"elapsed_time\": %.18g}\n", sample_num, clbits, elapsed_time);
             fflush(stdout);
