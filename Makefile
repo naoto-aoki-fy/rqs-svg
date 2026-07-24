@@ -10,9 +10,6 @@ LIBQCS_SO ?= lib/libqcs.so
 .PHONY: target
 target: $(QCS_BIN)
 
-.PHONY: qcs
-qcs: $(QCS_BIN)
-
 .PHONY: sharedlibrary
 sharedlibrary: $(LIBQCS_SO)
 
@@ -30,4 +27,4 @@ gengetopt: src/qcs_args.ggo
 
 .PHONY: clean
 clean:
-	$(RM) $(QCS_BIN) $(LIBQCS_SO) qcs libqcs.so
+	$(RM) $(QCS_BIN) $(LIBQCS_SO)
