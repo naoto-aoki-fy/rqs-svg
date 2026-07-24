@@ -3,8 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static int num_qubits;
-static int num_clbits;
+static bit_num_t num_qubits;
+static bit_num_t num_clbits;
 
 void circuit_init(qcs_simulator *sim)
 {
@@ -30,15 +30,15 @@ void circuit_init(qcs_simulator *sim)
 void circuit_run(qcs_simulator *sim)
 {
 
-    for (int qubit_num = 0; qubit_num < num_qubits; qubit_num++)
+    for (bit_num_t qubit_num = 0; qubit_num < num_qubits; qubit_num++)
     {
-        int target[] = {qubit_num};
+        bit_num_t target[] = {qubit_num};
         qcs_simulator_gate_h(sim, target, 1, NULL, 0, NULL, 0);
     }
 
-    for (int qubit_num = 0; qubit_num < num_qubits; qubit_num++)
+    for (bit_num_t qubit_num = 0; qubit_num < num_qubits; qubit_num++)
     {
-        int measured = 0;
+        bit_t measured = 0;
         qcs_simulator_measure_to_clbit(sim, qubit_num, qubit_num, &measured);
     }
 }

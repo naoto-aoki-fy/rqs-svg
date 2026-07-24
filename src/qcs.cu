@@ -1885,7 +1885,7 @@ namespace qcs
             }
         }
 
-        void allocate_memory(int num_qubits)
+        void allocate_memory(bit_num_t num_qubits)
         {
 
             size_t total_memory_bytes = 0;
@@ -2981,7 +2981,7 @@ struct qcs_simulator
 static void qcs_simulator_init(qcs_simulator *sim);
 static void qcs_simulator_setup(qcs_simulator *sim);
 
-static std::vector<int> qcs_vector_from_array(int const *values, int count)
+static std::vector<int> qcs_vector_from_array(bit_num_t const *values, bit_num_t count)
 {
     if (count < 0)
     {
@@ -3023,12 +3023,12 @@ namespace
         qcs_report_exception("Unknown C++ exception");
     }
 
-    template <typename T>
-    void qcs_write_result(T *result, T value)
+    template <typename Result, typename Value>
+    void qcs_write_result(Result *result, Value value)
     {
         if (result == NULL)
             throw std::runtime_error("result pointer must not be NULL");
-        *result = value;
+        *result = static_cast<Result>(value);
     }
 
     template <typename Function>
@@ -3110,9 +3110,9 @@ int qcs_simulator_get_proc_num_cxx(qcs_simulator *sim) { return sim->core->proc_
 int qcs_simulator_get_num_procs_cxx(qcs_simulator *sim) { return sim->core->num_procs; }
 int qcs_simulator_get_num_qubits_cxx(qcs_simulator const *sim) { return sim->num_qubits; }
 int qcs_simulator_get_num_clbits_cxx(qcs_simulator const *sim) { return sim->num_clbits; }
-void qcs_simulator_set_num_qubits_cxx(qcs_simulator *sim, int num_qubits) { sim->num_qubits = num_qubits; }
+void qcs_simulator_set_num_qubits_cxx(qcs_simulator *sim, bit_num_t num_qubits) { sim->num_qubits = num_qubits; }
 
-void qcs_simulator_set_mapping_cxx(qcs_simulator *sim, int const *perm_p2l_array, int perm_p2l_count)
+void qcs_simulator_set_mapping_cxx(qcs_simulator *sim, bit_num_t const *perm_p2l_array, bit_num_t perm_p2l_count)
 {
     std::vector<int> const perm_p2l = qcs_vector_from_array(perm_p2l_array, perm_p2l_count);
     if (sim->num_qubits <= 0)
@@ -3131,20 +3131,20 @@ void qcs_simulator_set_mapping_cxx(qcs_simulator *sim, int const *perm_p2l_array
     sim->core->initial_perm_p2l = perm_p2l;
 }
 
-void qcs_simulator_set_num_clbits_cxx(qcs_simulator *sim, int num_clbits)
+void qcs_simulator_set_num_clbits_cxx(qcs_simulator *sim, bit_num_t num_clbits)
 {
     sim->num_clbits = num_clbits;
     sim->clbits.resize(num_clbits);
 }
-int qcs_simulator_measure_cxx(qcs_simulator *sim, int qubit_num) { return sim->core->measure_qubit(qubit_num); }
-int qcs_simulator_measure_to_clbit_cxx(qcs_simulator *sim, int qubit_num, int clbit_num)
+int qcs_simulator_measure_cxx(qcs_simulator *sim, bit_num_t qubit_num) { return sim->core->measure_qubit(qubit_num); }
+int qcs_simulator_measure_to_clbit_cxx(qcs_simulator *sim, bit_num_t qubit_num, bit_num_t clbit_num)
 {
     int const result = qcs_simulator_measure_cxx(sim, qubit_num);
     sim->clbits[clbit_num] = result;
     return result;
 }
-int qcs_simulator_read_cxx(qcs_simulator *sim, int clbit_num) { return sim->clbits[clbit_num]; }
-void qcs_simulator_reset_cxx(qcs_simulator *sim, int qubit_num)
+int qcs_simulator_read_cxx(qcs_simulator *sim, bit_num_t clbit_num) { return sim->clbits[clbit_num]; }
+void qcs_simulator_reset_cxx(qcs_simulator *sim, bit_num_t qubit_num)
 {
     if (qcs_simulator_measure_cxx(sim, qubit_num))
         qcs_simulator_gate_x_cxx(sim, &qubit_num, 1, NULL, 0, NULL, 0);
@@ -3155,14 +3155,14 @@ void qcs_simulator_set_flat_state_cxx(qcs_simulator *sim) { sim->core->initializ
 void qcs_simulator_set_entangled_state_cxx(qcs_simulator *sim) { sim->core->initialize_entangled(); }
 void qcs_simulator_set_random_state_cxx(qcs_simulator *sim) { sim->core->initialize_use_curand(); }
 
-void qcs_simulator_gate_global_phase_cxx(qcs_simulator *sim, double theta, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_global_phase_cxx(qcs_simulator *sim, double theta, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
     auto const ctrls = qcs_vector_from_array(ctrl_qubit_num_list, ctrl_qubit_num_count);
     sim->core->operate_gate(qcs::gate::global_phase(theta), {}, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_swap_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_swap_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3170,7 +3170,7 @@ void qcs_simulator_gate_swap_cxx(qcs_simulator *sim, int const *target_qubit_num
     sim->core->operate_gate(qcs::gate::swap(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_iswap_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_iswap_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3178,7 +3178,7 @@ void qcs_simulator_gate_iswap_cxx(qcs_simulator *sim, int const *target_qubit_nu
     sim->core->operate_gate(qcs::gate::iswap(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_h_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_h_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3186,7 +3186,7 @@ void qcs_simulator_gate_h_cxx(qcs_simulator *sim, int const *target_qubit_num_li
     sim->core->operate_gate(qcs::gate::hadamard(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_x_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_x_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3194,7 +3194,7 @@ void qcs_simulator_gate_x_cxx(qcs_simulator *sim, int const *target_qubit_num_li
     sim->core->operate_gate(qcs::gate::x(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_y_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_y_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3202,7 +3202,7 @@ void qcs_simulator_gate_y_cxx(qcs_simulator *sim, int const *target_qubit_num_li
     sim->core->operate_gate(qcs::gate::y(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_z_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_z_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3210,7 +3210,7 @@ void qcs_simulator_gate_z_cxx(qcs_simulator *sim, int const *target_qubit_num_li
     sim->core->operate_gate(qcs::gate::z(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_s_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_s_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3218,7 +3218,7 @@ void qcs_simulator_gate_s_cxx(qcs_simulator *sim, int const *target_qubit_num_li
     sim->core->operate_gate(qcs::gate::s(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_sdg_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_sdg_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3226,7 +3226,7 @@ void qcs_simulator_gate_sdg_cxx(qcs_simulator *sim, int const *target_qubit_num_
     sim->core->operate_gate(qcs::gate::sdg(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_t_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_t_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3234,7 +3234,7 @@ void qcs_simulator_gate_t_cxx(qcs_simulator *sim, int const *target_qubit_num_li
     sim->core->operate_gate(qcs::gate::t(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_tdg_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_tdg_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3242,7 +3242,7 @@ void qcs_simulator_gate_tdg_cxx(qcs_simulator *sim, int const *target_qubit_num_
     sim->core->operate_gate(qcs::gate::tdg(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_sx_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_sx_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3250,7 +3250,7 @@ void qcs_simulator_gate_sx_cxx(qcs_simulator *sim, int const *target_qubit_num_l
     sim->core->operate_gate(qcs::gate::sx(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_sxdg_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_sxdg_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3258,7 +3258,7 @@ void qcs_simulator_gate_sxdg_cxx(qcs_simulator *sim, int const *target_qubit_num
     sim->core->operate_gate(qcs::gate::sxdg(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_rx_cxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_rx_cxx(qcs_simulator *sim, double theta, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3266,7 +3266,7 @@ void qcs_simulator_gate_rx_cxx(qcs_simulator *sim, double theta, int const *targ
     sim->core->operate_gate(qcs::gate::rx(theta), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_ry_cxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_ry_cxx(qcs_simulator *sim, double theta, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3274,7 +3274,7 @@ void qcs_simulator_gate_ry_cxx(qcs_simulator *sim, double theta, int const *targ
     sim->core->operate_gate(qcs::gate::ry(theta), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_rz_cxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_rz_cxx(qcs_simulator *sim, double theta, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3282,7 +3282,7 @@ void qcs_simulator_gate_rz_cxx(qcs_simulator *sim, double theta, int const *targ
     sim->core->operate_gate(qcs::gate::rz(theta), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_u4_cxx(qcs_simulator *sim, double theta, double phi, double lambda, double gamma, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_u4_cxx(qcs_simulator *sim, double theta, double phi, double lambda, double gamma, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3290,7 +3290,7 @@ void qcs_simulator_gate_u4_cxx(qcs_simulator *sim, double theta, double phi, dou
     sim->core->operate_gate(qcs::gate::u4(theta, phi, lambda, gamma), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_u3_cxx(qcs_simulator *sim, double theta, double phi, double lambda, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_u3_cxx(qcs_simulator *sim, double theta, double phi, double lambda, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3298,7 +3298,7 @@ void qcs_simulator_gate_u3_cxx(qcs_simulator *sim, double theta, double phi, dou
     sim->core->operate_gate(qcs::gate::u3(theta, phi, lambda), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_u2_cxx(qcs_simulator *sim, double phi, double lambda, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_u2_cxx(qcs_simulator *sim, double phi, double lambda, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3306,7 +3306,7 @@ void qcs_simulator_gate_u2_cxx(qcs_simulator *sim, double phi, double lambda, in
     sim->core->operate_gate(qcs::gate::u2(phi, lambda), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_u1_cxx(qcs_simulator *sim, double lambda, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_u1_cxx(qcs_simulator *sim, double lambda, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3314,7 +3314,7 @@ void qcs_simulator_gate_u1_cxx(qcs_simulator *sim, double lambda, int const *tar
     sim->core->operate_gate(qcs::gate::u1(lambda), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_u_cxx(qcs_simulator *sim, double theta, double phi, double lambda, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_u_cxx(qcs_simulator *sim, double theta, double phi, double lambda, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3322,7 +3322,7 @@ void qcs_simulator_gate_u_cxx(qcs_simulator *sim, double theta, double phi, doub
     sim->core->operate_gate(qcs::gate::u(theta, phi, lambda), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_p_cxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_p_cxx(qcs_simulator *sim, double theta, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3330,7 +3330,7 @@ void qcs_simulator_gate_p_cxx(qcs_simulator *sim, double theta, int const *targe
     sim->core->operate_gate(qcs::gate::p(theta), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_id_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_id_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3338,7 +3338,7 @@ void qcs_simulator_gate_id_cxx(qcs_simulator *sim, int const *target_qubit_num_l
     sim->core->operate_gate(qcs::gate::id(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_r_cxx(qcs_simulator *sim, double theta, double phi, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_r_cxx(qcs_simulator *sim, double theta, double phi, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3346,7 +3346,7 @@ void qcs_simulator_gate_r_cxx(qcs_simulator *sim, double theta, double phi, int 
     sim->core->operate_gate(qcs::gate::r(theta, phi), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_rzz_cxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_rzz_cxx(qcs_simulator *sim, double theta, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3354,7 +3354,7 @@ void qcs_simulator_gate_rzz_cxx(qcs_simulator *sim, double theta, int const *tar
     sim->core->operate_gate(qcs::gate::rzz(theta), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_rxx_cxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_rxx_cxx(qcs_simulator *sim, double theta, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3362,7 +3362,7 @@ void qcs_simulator_gate_rxx_cxx(qcs_simulator *sim, double theta, int const *tar
     sim->core->operate_gate(qcs::gate::rxx(theta), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_ryy_cxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_ryy_cxx(qcs_simulator *sim, double theta, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3370,7 +3370,7 @@ void qcs_simulator_gate_ryy_cxx(qcs_simulator *sim, double theta, int const *tar
     sim->core->operate_gate(qcs::gate::ryy(theta), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_rzx_cxx(qcs_simulator *sim, double theta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_rzx_cxx(qcs_simulator *sim, double theta, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3378,7 +3378,7 @@ void qcs_simulator_gate_rzx_cxx(qcs_simulator *sim, double theta, int const *tar
     sim->core->operate_gate(qcs::gate::rzx(theta), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_dcx_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_dcx_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3386,7 +3386,7 @@ void qcs_simulator_gate_dcx_cxx(qcs_simulator *sim, int const *target_qubit_num_
     sim->core->operate_gate(qcs::gate::dcx(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_ecr_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_ecr_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3394,7 +3394,7 @@ void qcs_simulator_gate_ecr_cxx(qcs_simulator *sim, int const *target_qubit_num_
     sim->core->operate_gate(qcs::gate::ecr(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_xx_plus_yy_cxx(qcs_simulator *sim, double theta, double beta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_xx_plus_yy_cxx(qcs_simulator *sim, double theta, double beta, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3402,7 +3402,7 @@ void qcs_simulator_gate_xx_plus_yy_cxx(qcs_simulator *sim, double theta, double 
     sim->core->operate_gate(qcs::gate::xx_plus_yy(theta, beta), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_xx_minus_yy_cxx(qcs_simulator *sim, double theta, double beta, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_xx_minus_yy_cxx(qcs_simulator *sim, double theta, double beta, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3410,7 +3410,7 @@ void qcs_simulator_gate_xx_minus_yy_cxx(qcs_simulator *sim, double theta, double
     sim->core->operate_gate(qcs::gate::xx_minus_yy(theta, beta), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_rccx_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_rccx_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3418,7 +3418,7 @@ void qcs_simulator_gate_rccx_cxx(qcs_simulator *sim, int const *target_qubit_num
     sim->core->operate_gate(qcs::gate::rccx(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_gate_rcccx_cxx(qcs_simulator *sim, int const *target_qubit_num_list, int target_qubit_num_count, int const *negctrl_qubit_num_list, int negctrl_qubit_num_count, int const *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+void qcs_simulator_gate_rcccx_cxx(qcs_simulator *sim, bit_num_t const *target_qubit_num_list, bit_num_t target_qubit_num_count, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     auto const targets = qcs_vector_from_array(target_qubit_num_list, target_qubit_num_count);
     auto const negctrls = qcs_vector_from_array(negctrl_qubit_num_list, negctrl_qubit_num_count);
@@ -3426,7 +3426,7 @@ void qcs_simulator_gate_rcccx_cxx(qcs_simulator *sim, int const *target_qubit_nu
     sim->core->operate_gate(qcs::gate::rcccx(), targets, negctrls, ctrls);
 }
 
-void qcs_simulator_get_clbits_cxx(qcs_simulator const *sim, int *clbits)
+void qcs_simulator_get_clbits_cxx(qcs_simulator const *sim, bit_t *clbits)
 {
     for (int i = 0; i < sim->num_clbits; ++i)
         clbits[i] = sim->clbits[i] ? 1 : 0;
@@ -3448,7 +3448,7 @@ void qcs_simulator_get_clbits_string_cxx(qcs_simulator const *sim, char *clbits_
 void qcs_simulator_save_statevector_cxx(qcs_simulator *sim, char const *outfn) { sim->core->save_statevector(outfn); }
 int qcs_simulator_event_create_cxx(qcs_simulator *sim) { return sim->core->event_create(); }
 void qcs_simulator_event_record_cxx(qcs_simulator *sim, int event_num) { sim->core->event_record(event_num); }
-double qcs_simulator_event_get_elapsed_time_cxx(qcs_simulator *sim, int start_event_num, int stop_event_num) { return sim->core->event_get_elapsed_time(start_event_num, stop_event_num); }
+double qcs_simulator_event_get_elapsed_time_cxx(qcs_simulator *sim, event_num_t start_event_num, event_num_t stop_event_num) { return sim->core->event_get_elapsed_time(start_event_num, stop_event_num); }
 
 extern "C" int qcs_simulator_create(qcs_simulator **result)
 {
@@ -3474,49 +3474,49 @@ extern "C" int qcs_simulator_dispose(qcs_simulator *sim)
                 { qcs_simulator_dispose_cxx(sim); });
 }
 
-extern "C" int qcs_simulator_get_num_procs(qcs_simulator *sim, int *result)
+extern "C" int qcs_simulator_get_num_procs(qcs_simulator *sim, bit_t *result)
 {
     return qcs_try_cxx([&]()
                        { qcs_write_result(result, qcs_simulator_get_num_procs_cxx(sim)); });
 }
 
-extern "C" int qcs_simulator_get_proc_num(qcs_simulator *sim, int *result)
+extern "C" int qcs_simulator_get_proc_num(qcs_simulator *sim, bit_t *result)
 {
     return qcs_try_cxx([&]()
                        { qcs_write_result(result, qcs_simulator_get_proc_num_cxx(sim)); });
 }
 
-extern "C" int qcs_simulator_get_num_qubits(const qcs_simulator *sim, int *result)
+extern "C" int qcs_simulator_get_num_qubits(const qcs_simulator *sim, bit_t *result)
 {
     return qcs_try_cxx([&]()
                        { qcs_write_result(result, qcs_simulator_get_num_qubits_cxx(sim)); });
 }
 
-extern "C" int qcs_simulator_get_num_clbits(const qcs_simulator *sim, int *result)
+extern "C" int qcs_simulator_get_num_clbits(const qcs_simulator *sim, bit_t *result)
 {
     return qcs_try_cxx([&]()
                        { qcs_write_result(result, qcs_simulator_get_num_clbits_cxx(sim)); });
 }
 
-extern "C" int qcs_simulator_set_num_qubits(qcs_simulator *sim, int num_qubits)
+extern "C" int qcs_simulator_set_num_qubits(qcs_simulator *sim, bit_num_t num_qubits)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_set_num_qubits_cxx(sim, num_qubits); });
 }
 
-extern "C" int qcs_simulator_set_mapping(qcs_simulator *sim, const int *perm_p2l, int perm_p2l_count)
+extern "C" int qcs_simulator_set_mapping(qcs_simulator *sim, const bit_num_t *perm_p2l, bit_num_t perm_p2l_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_set_mapping_cxx(sim, perm_p2l, perm_p2l_count); });
 }
 
-extern "C" int qcs_simulator_set_num_clbits(qcs_simulator *sim, int num_clbits)
+extern "C" int qcs_simulator_set_num_clbits(qcs_simulator *sim, bit_num_t num_clbits)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_set_num_clbits_cxx(sim, num_clbits); });
 }
 
-extern "C" int qcs_simulator_get_clbits(const qcs_simulator *sim, int *clbits)
+extern "C" int qcs_simulator_get_clbits(const qcs_simulator *sim, bit_t *clbits)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_get_clbits_cxx(sim, clbits); });
@@ -3528,7 +3528,7 @@ extern "C" int qcs_simulator_get_clbits_string(const qcs_simulator *sim, char *c
                 { qcs_simulator_get_clbits_string_cxx(sim, clbits_string); });
 }
 
-extern "C" int qcs_simulator_reset(qcs_simulator *sim, int qubit_num)
+extern "C" int qcs_simulator_reset(qcs_simulator *sim, bit_num_t qubit_num)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_reset_cxx(sim, qubit_num); });
@@ -3582,223 +3582,223 @@ extern "C" int qcs_simulator_reinitialize_mapping(qcs_simulator *sim)
                 { qcs_simulator_reinitialize_mapping_cxx(sim); });
 }
 
-extern "C" int qcs_simulator_gate_global_phase(qcs_simulator *sim, double theta, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_global_phase(qcs_simulator *sim, double theta, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_global_phase_cxx(sim, theta, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_h(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_h(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_h_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_x(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_x(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_x_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_y(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_y(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_y_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_z(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_z(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_z_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_s(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_s(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_s_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_sdg(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_sdg(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_sdg_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_t(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_t(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_t_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_tdg(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_tdg(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_tdg_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_sx(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_sx(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_sx_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_rx(qcs_simulator *sim, double theta, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_rx(qcs_simulator *sim, double theta, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_rx_cxx(sim, theta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_ry(qcs_simulator *sim, double theta, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_ry(qcs_simulator *sim, double theta, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_ry_cxx(sim, theta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_rz(qcs_simulator *sim, double theta, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_rz(qcs_simulator *sim, double theta, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_rz_cxx(sim, theta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_u4(qcs_simulator *sim, double theta, double phi, double lambda, double gamma, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_u4(qcs_simulator *sim, double theta, double phi, double lambda, double gamma, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_u4_cxx(sim, theta, phi, lambda, gamma, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_u3(qcs_simulator *sim, double theta, double phi, double lambda, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_u3(qcs_simulator *sim, double theta, double phi, double lambda, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_u3_cxx(sim, theta, phi, lambda, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_u2(qcs_simulator *sim, double phi, double lambda, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_u2(qcs_simulator *sim, double phi, double lambda, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_u2_cxx(sim, phi, lambda, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_u1(qcs_simulator *sim, double lambda, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_u1(qcs_simulator *sim, double lambda, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_u1_cxx(sim, lambda, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_u(qcs_simulator *sim, double theta, double phi, double lambda, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_u(qcs_simulator *sim, double theta, double phi, double lambda, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_u_cxx(sim, theta, phi, lambda, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_p(qcs_simulator *sim, double theta, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_p(qcs_simulator *sim, double theta, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_p_cxx(sim, theta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_swap(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_swap(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_swap_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_iswap(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_iswap(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_iswap_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_id(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_id(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_id_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_sxdg(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_sxdg(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_sxdg_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_r(qcs_simulator *sim, double theta, double phi, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_r(qcs_simulator *sim, double theta, double phi, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_r_cxx(sim, theta, phi, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_rxx(qcs_simulator *sim, double theta, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_rxx(qcs_simulator *sim, double theta, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_rxx_cxx(sim, theta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_ryy(qcs_simulator *sim, double theta, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_ryy(qcs_simulator *sim, double theta, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_ryy_cxx(sim, theta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_rzz(qcs_simulator *sim, double theta, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_rzz(qcs_simulator *sim, double theta, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_rzz_cxx(sim, theta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_rzx(qcs_simulator *sim, double theta, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_rzx(qcs_simulator *sim, double theta, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_rzx_cxx(sim, theta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_dcx(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_dcx(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_dcx_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_ecr(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_ecr(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_ecr_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_xx_plus_yy(qcs_simulator *sim, double theta, double beta, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_xx_plus_yy(qcs_simulator *sim, double theta, double beta, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_xx_plus_yy_cxx(sim, theta, beta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_xx_minus_yy(qcs_simulator *sim, double theta, double beta, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_xx_minus_yy(qcs_simulator *sim, double theta, double beta, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_xx_minus_yy_cxx(sim, theta, beta, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_rccx(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_rccx(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_rccx_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_gate_rcccx(qcs_simulator *sim, const int *target_qubit_num_list, int target_qubit_num_count, const int *negctrl_qubit_num_list, int negctrl_qubit_num_count, const int *ctrl_qubit_num_list, int ctrl_qubit_num_count)
+extern "C" int qcs_simulator_gate_rcccx(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
     return qcs_try_cxx([&]()
                 { qcs_simulator_gate_rcccx_cxx(sim, target_qubit_num_list, target_qubit_num_count, negctrl_qubit_num_list, negctrl_qubit_num_count, ctrl_qubit_num_list, ctrl_qubit_num_count); });
 }
 
-extern "C" int qcs_simulator_measure(qcs_simulator *sim, int qubit_num, int *result)
+extern "C" int qcs_simulator_measure(qcs_simulator *sim, bit_num_t qubit_num, bit_t *result)
 {
     return qcs_try_cxx([&]()
                        { qcs_write_result(result, qcs_simulator_measure_cxx(sim, qubit_num)); });
 }
 
-extern "C" int qcs_simulator_measure_to_clbit(qcs_simulator *sim, int qubit_num, int clbit_num, int *result)
+extern "C" int qcs_simulator_measure_to_clbit(qcs_simulator *sim, bit_num_t qubit_num, bit_num_t clbit_num, bit_t *result)
 {
     return qcs_try_cxx([&]()
                        { qcs_write_result(result, qcs_simulator_measure_to_clbit_cxx(sim, qubit_num, clbit_num)); });
 }
 
-extern "C" int qcs_simulator_read(qcs_simulator *sim, int clbit_num, int *result)
+extern "C" int qcs_simulator_read(qcs_simulator *sim, bit_num_t clbit_num, bit_t *result)
 {
     return qcs_try_cxx([&]()
                        { qcs_write_result(result, qcs_simulator_read_cxx(sim, clbit_num)); });
@@ -3810,7 +3810,7 @@ extern "C" int qcs_simulator_save_statevector(qcs_simulator *sim, const char *ou
                 { qcs_simulator_save_statevector_cxx(sim, outfn); });
 }
 
-extern "C" int qcs_simulator_event_create(qcs_simulator *sim, int *result)
+extern "C" int qcs_simulator_event_create(qcs_simulator *sim, bit_t *result)
 {
     return qcs_try_cxx([&]()
                        { qcs_write_result(result, qcs_simulator_event_create_cxx(sim)); });
@@ -3822,7 +3822,7 @@ extern "C" int qcs_simulator_event_record(qcs_simulator *sim, int event_num)
                 { qcs_simulator_event_record_cxx(sim, event_num); });
 }
 
-extern "C" int qcs_simulator_event_get_elapsed_time(qcs_simulator *sim, int start_event_num, int stop_event_num, double *result)
+extern "C" int qcs_simulator_event_get_elapsed_time(qcs_simulator *sim, event_num_t start_event_num, event_num_t stop_event_num, double *result)
 {
     return qcs_try_cxx([&]()
                        { qcs_write_result(result, qcs_simulator_event_get_elapsed_time_cxx(sim, start_event_num, stop_event_num)); });

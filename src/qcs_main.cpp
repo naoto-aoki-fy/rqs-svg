@@ -14,14 +14,14 @@
 #include <qcs.h>
 #include "qcs_args.h"
 
-static std::vector<int> parse_mapping_csv(std::string const &mapping_text)
+static std::vector<bit_num_t> parse_mapping_csv(std::string const &mapping_text)
 {
     if (mapping_text.empty())
     {
         throw std::runtime_error("mapping string must not be empty");
     }
 
-    std::vector<int> mapping;
+    std::vector<bit_num_t> mapping;
     std::stringstream ss(mapping_text);
     std::string token;
     while (std::getline(ss, token, ','))
@@ -36,14 +36,14 @@ static std::vector<int> parse_mapping_csv(std::string const &mapping_text)
     return mapping;
 }
 
-static std::vector<int> invert_mapping(std::vector<int> const &perm_p2l, int const num_qubits)
+static std::vector<bit_num_t> invert_mapping(std::vector<bit_num_t> const &perm_p2l, bit_num_t const num_qubits)
 {
     if ((int)perm_p2l.size() != num_qubits)
     {
         throw std::runtime_error(atlc::format("mapping size %d does not match num_qubits %d", (int)perm_p2l.size(), num_qubits));
     }
 
-    std::vector<int> perm_l2p(num_qubits, -1);
+    std::vector<bit_num_t> perm_l2p(num_qubits, -1);
     for (int physical_qubit_num = 0; physical_qubit_num < num_qubits; physical_qubit_num++)
     {
         int const logical_qubit_num = perm_p2l[physical_qubit_num];
@@ -111,20 +111,20 @@ int main(int argc, char **argv)
 
     circuit_init(sim.get());
 
-    std::vector<int> mapping;
+    std::vector<bit_num_t> mapping;
     if (parsed_options.mapping_given > 0)
     {
         mapping = parse_mapping_csv(parsed_options.mapping_arg);
     }
     else
     {
-        int num_qubits = 0;
+        bit_t num_qubits = 0;
         if (!qcs_simulator_get_num_qubits(sim.get(), &num_qubits))
         {
             throw std::runtime_error("qcs_simulator_get_num_qubits failed");
         }
         mapping.resize(num_qubits);
-        for (int qubit_num = 0; qubit_num < num_qubits; qubit_num++)
+        for (bit_num_t qubit_num = 0; qubit_num < num_qubits; qubit_num++)
         {
             mapping[qubit_num] = qubit_num;
         }
@@ -132,7 +132,7 @@ int main(int argc, char **argv)
 
     if (parsed_options.reversed_mapping_flag)
     {
-        int num_qubits = 0;
+        bit_t num_qubits = 0;
         if (!qcs_simulator_get_num_qubits(sim.get(), &num_qubits))
         {
             throw std::runtime_error("qcs_simulator_get_num_qubits failed");
@@ -143,8 +143,8 @@ int main(int argc, char **argv)
 
     qcs_simulator_allocate_memory(sim.get());
 
-    int event_1 = 0;
-    int event_2 = 0;
+    bit_t event_1 = 0;
+    bit_t event_2 = 0;
     if (!qcs_simulator_event_create(sim.get(), &event_1) || !qcs_simulator_event_create(sim.get(), &event_2))
     {
         throw std::runtime_error("qcs_simulator_event_create failed");
@@ -165,14 +165,14 @@ int main(int argc, char **argv)
             throw std::runtime_error("qcs_simulator_event_get_elapsed_time failed");
         }
 
-        int num_clbits = 0;
+        bit_t num_clbits = 0;
         if (!qcs_simulator_get_num_clbits(sim.get(), &num_clbits))
         {
             throw std::runtime_error("qcs_simulator_get_num_clbits failed");
         }
         std::vector<char> clbits_string(num_clbits + 1);
         qcs_simulator_get_clbits_string(sim.get(), clbits_string.data());
-        int proc_num = 0;
+        bit_t proc_num = 0;
         if (!qcs_simulator_get_proc_num(sim.get(), &proc_num))
         {
             throw std::runtime_error("qcs_simulator_get_proc_num failed");

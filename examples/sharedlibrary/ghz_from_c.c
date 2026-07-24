@@ -40,7 +40,7 @@ static int parse_positive_int(const char *option_name, const char *value)
 
 int main(int argc, char **argv)
 {
-    int num_qubits = 0;
+    bit_num_t num_qubits = 0;
     int num_samples = 1;
 
     static const struct option long_options[] = {
@@ -84,7 +84,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    const int num_clbits = num_qubits;
+    const bit_num_t num_clbits = num_qubits;
 
     qcs_simulator *sim = NULL;
     if (!qcs_simulator_create(&sim))
@@ -97,8 +97,8 @@ int main(int argc, char **argv)
     qcs_simulator_set_num_clbits(sim, num_clbits);
     qcs_simulator_allocate_memory(sim);
 
-    int event_1 = 0;
-    int event_2 = 0;
+    bit_t event_1 = 0;
+    bit_t event_2 = 0;
     if (!qcs_simulator_event_create(sim, &event_1) || !qcs_simulator_event_create(sim, &event_2))
     {
         fprintf(stderr, "failed to create qcs events\n");
@@ -118,19 +118,19 @@ int main(int argc, char **argv)
     {
         qcs_simulator_event_record(sim, event_1);
 
-        int target[] = {0};
+        bit_num_t target[] = {0};
         qcs_simulator_gate_h(sim, target, 1, NULL, 0, NULL, 0);
 
-        for (int qubit_num = 1; qubit_num < num_qubits; qubit_num++)
+        for (bit_num_t qubit_num = 1; qubit_num < num_qubits; qubit_num++)
         {
-            int x_target[] = {qubit_num};
-            int ctrl[] = {0};
+            bit_num_t x_target[] = {qubit_num};
+            bit_num_t ctrl[] = {0};
             qcs_simulator_gate_x(sim, x_target, 1, NULL, 0, ctrl, 1);
         }
 
-        for (int qubit_num = 0; qubit_num < num_qubits; qubit_num++)
+        for (bit_num_t qubit_num = 0; qubit_num < num_qubits; qubit_num++)
         {
-            int measured = 0;
+            bit_t measured = 0;
             qcs_simulator_measure_to_clbit(sim, qubit_num, qubit_num, &measured);
         }
 
@@ -139,7 +139,7 @@ int main(int argc, char **argv)
         qcs_simulator_event_get_elapsed_time(sim, event_1, event_2, &elapsed_time);
 
         qcs_simulator_get_clbits_string(sim, clbits);
-        int proc_num = 0;
+        bit_t proc_num = 0;
         qcs_simulator_get_proc_num(sim, &proc_num);
         if (proc_num == 0)
         {
