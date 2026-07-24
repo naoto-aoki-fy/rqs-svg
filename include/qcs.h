@@ -68,10 +68,6 @@ void qcs_simulator_save_statevector_cxx(qcs_simulator* sim, const char* outfn);
 int qcs_simulator_event_create_cxx(qcs_simulator* sim);
 void qcs_simulator_event_record_cxx(qcs_simulator* sim, int event_num);
 double qcs_simulator_event_get_elapsed_time_cxx(qcs_simulator* sim, int start_event_num, int stop_event_num);
-__attribute__((format(printf, 3, 4))) int qcs_simulator_fprintf_master_cxx(qcs_simulator* sim, FILE *fp, const char *format, ...);
-__attribute__((format(printf, 3, 4))) int qcs_simulator_fprintf_all_cxx(qcs_simulator* sim, FILE *fp, const char *format, ...);
-int qcs_simulator_fflush_master_cxx(qcs_simulator* sim, FILE* stream);
-int qcs_simulator_fflush_all_cxx(qcs_simulator* sim, FILE* stream);
 extern "C" {
 #endif
 
@@ -139,10 +135,6 @@ void qcs_simulator_save_statevector(qcs_simulator* sim, const char* outfn);
 int qcs_simulator_event_create(qcs_simulator* sim);
 void qcs_simulator_event_record(qcs_simulator* sim, int event_num);
 double qcs_simulator_event_get_elapsed_time(qcs_simulator* sim, int start_event_num, int stop_event_num);
-__attribute__((format(printf, 3, 4))) int qcs_simulator_fprintf_master(qcs_simulator* sim, FILE *fp, const char *format, ...);
-__attribute__((format(printf, 3, 4))) int qcs_simulator_fprintf_all(qcs_simulator* sim, FILE *fp, const char *format, ...);
-int qcs_simulator_fflush_master(qcs_simulator* sim, FILE* stream);
-int qcs_simulator_fflush_all(qcs_simulator* sim, FILE* stream);
 
 #ifdef __cplusplus
 }

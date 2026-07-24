@@ -3439,32 +3439,6 @@ void qcs_simulator_save_statevector_cxx(qcs_simulator *sim, char const *outfn) {
 int qcs_simulator_event_create_cxx(qcs_simulator *sim) { return sim->core->event_create(); }
 void qcs_simulator_event_record_cxx(qcs_simulator *sim, int event_num) { sim->core->event_record(event_num); }
 double qcs_simulator_event_get_elapsed_time_cxx(qcs_simulator *sim, int start_event_num, int stop_event_num) { return sim->core->event_get_elapsed_time(start_event_num, stop_event_num); }
-int qcs_simulator_fprintf_master_cxx(qcs_simulator *sim, FILE *fp, const char *format, ...)
-{
-    if (qcs_simulator_get_proc_num_cxx(sim) != 0)
-        return 0;
-    va_list ap;
-    va_start(ap, format);
-    int result = vfprintf(fp, format, ap);
-    va_end(ap);
-    return result;
-}
-int qcs_simulator_fprintf_all_cxx(qcs_simulator *, FILE *fp, const char *format, ...)
-{
-    va_list ap;
-    va_start(ap, format);
-    int result = vfprintf(fp, format, ap);
-    va_end(ap);
-    return result;
-}
-int qcs_simulator_fflush_all_cxx(qcs_simulator *, FILE *fp) { return fflush(fp); }
-int qcs_simulator_fflush_master_cxx(qcs_simulator *sim, FILE *fp)
-{
-    if (qcs_simulator_get_proc_num_cxx(sim) != 0)
-        return 0;
-    return fflush(fp);
-}
-
 
 extern "C" qcs_simulator* qcs_simulator_create(void)
 {
@@ -3968,46 +3942,4 @@ extern "C" double qcs_simulator_event_get_elapsed_time(qcs_simulator* sim, int s
     {
         return qcs_simulator_event_get_elapsed_time_cxx(sim, start_event_num, stop_event_num);
     }, 0.0);
-}
-
-extern "C" int qcs_simulator_fprintf_master(qcs_simulator* sim, FILE *fp, const char *format, ...)
-{
-    return qcs_try_cxx([&]()
-    {
-        if (qcs_simulator_get_proc_num_cxx(sim) != 0)
-            return 0;
-        va_list ap;
-        va_start(ap, format);
-        int result = vfprintf(fp, format, ap);
-        va_end(ap);
-        return result;
-    }, 0);
-}
-
-extern "C" int qcs_simulator_fprintf_all(qcs_simulator* sim, FILE *fp, const char *format, ...)
-{
-    return qcs_try_cxx([&]()
-    {
-        va_list ap;
-        va_start(ap, format);
-        int result = vfprintf(fp, format, ap);
-        va_end(ap);
-        return result;
-    }, 0);
-}
-
-extern "C" int qcs_simulator_fflush_master(qcs_simulator* sim, FILE* stream)
-{
-    return qcs_try_cxx([&]()
-    {
-        return qcs_simulator_fflush_master_cxx(sim, stream);
-    }, 0);
-}
-
-extern "C" int qcs_simulator_fflush_all(qcs_simulator* sim, FILE* stream)
-{
-    return qcs_try_cxx([&]()
-    {
-        return qcs_simulator_fflush_all_cxx(sim, stream);
-    }, 0);
 }

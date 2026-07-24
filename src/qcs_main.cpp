@@ -144,8 +144,11 @@ int main(int argc, char **argv)
 
         std::vector<char> clbits_string(qcs_simulator_get_num_clbits(sim.get()) + 1);
         qcs_simulator_get_clbits_string(sim.get(), clbits_string.data());
-        qcs_simulator_fprintf_master(sim.get(), stdout, "{\"sample_num\": %d, \"clbits\": \"%s\", \"elapsed_time\": %.18g}\n", sample_num, clbits_string.data(), elapsed_time);
-        qcs_simulator_fflush_master(sim.get(), stdout);
+        if (qcs_simulator_get_proc_num(sim.get()) == 0)
+        {
+            fprintf(stdout, "{\"sample_num\": %d, \"clbits\": \"%s\", \"elapsed_time\": %.18g}\n", sample_num, clbits_string.data(), elapsed_time);
+            fflush(stdout);
+        }
 
         if (sample_num != num_samples - 1)
         {

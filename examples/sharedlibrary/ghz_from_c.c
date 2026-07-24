@@ -131,8 +131,11 @@ int main(int argc, char **argv)
         double const elapsed_time = qcs_simulator_event_get_elapsed_time(sim, event_1, event_2);
 
         qcs_simulator_get_clbits_string(sim, clbits);
-        qcs_simulator_fprintf_master(sim, stdout, "{\"sample_num\": %d, \"clbits\": \"%s\", \"elapsed_time\": %.18g}\n", sample_num, clbits, elapsed_time);
-        qcs_simulator_fflush_master(sim, stdout);
+        if (qcs_simulator_get_proc_num(sim) == 0)
+        {
+            fprintf(stdout, "{\"sample_num\": %d, \"clbits\": \"%s\", \"elapsed_time\": %.18g}\n", sample_num, clbits, elapsed_time);
+            fflush(stdout);
+        }
 
         if (sample_num != num_samples - 1)
         {
