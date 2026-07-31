@@ -32,7 +32,6 @@
 #include <thrust/iterator/counting_iterator.h>
 #include <thrust/iterator/transform_iterator.h>
 #include <nccl.h>
-#include <openssl/evp.h>
 
 #include <atlc/format.hpp>
 #include <atlc/log2_int.hpp>
@@ -2543,72 +2542,6 @@ namespace qcs
             }
         } /* save_statevector */
 
-        void calculate_checksum()
-        {
-
-            if (proc_num == 0)
-            {
-                fprintf(stderr, "[info] gathering state data\n");
-
-                EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
-                if (!mdctx)
-                {
-                    throw std::runtime_error("EVP_MD_CTX_new failed");
-                }
-                ATLC_DEFER_FUNC(EVP_MD_CTX_free, mdctx);
-
-                if (EVP_DigestInit_ex(mdctx, EVP_md5(), NULL) != 1)
-                {
-                    throw std::runtime_error("EVP_DigestInit_ex failed");
-                }
-
-                qcs::complex_t *state_data_host = (qcs::complex_t *)malloc(num_states * sizeof(qcs::complex_t));
-                ATLC_DEFER_FUNC(free, state_data_host);
-
-                ATLC_CHECK_CUDA(cudaMemcpyAsync, state_data_host, state_data_device, num_states_local * sizeof(qcs::complex_t), cudaMemcpyDeviceToHost, stream);
-                for (int peer_proc_num = 1; peer_proc_num < num_procs; peer_proc_num++)
-                {
-                    MPI_Status mpi_status;
-                    MPI_Recv(&state_data_host[peer_proc_num * num_states_local], num_states_local * 2, MPI_DOUBLE, peer_proc_num, 0, MPI_COMM_WORLD, &mpi_status);
-                }
-                ATLC_CHECK_CUDA(cudaStreamSynchronize, stream);
-
-                for (int64_t state_num_logical = 0; state_num_logical < num_states; state_num_logical++)
-                {
-                    int64_t state_num_physical = 0;
-                    for (int qubit_num_logical = 0; qubit_num_logical < num_qubits; qubit_num_logical++)
-                    {
-                        int qubit_num_physical = perm_l2p[qubit_num_logical];
-                        state_num_physical = state_num_physical | (((state_num_logical >> qubit_num_logical) & 1) << qubit_num_physical);
-                    }
-
-                    if (EVP_DigestUpdate(mdctx, &state_data_host[state_num_physical], sizeof(qcs::complex_t)) != 1)
-                    {
-                        throw std::runtime_error("EVP_DigestUpdate failed");
-                    }
-                }
-
-                std::vector<unsigned char> evp_hash(EVP_MAX_MD_SIZE); // [EVP_MAX_MD_SIZE];
-                unsigned int evp_hash_len;
-                if (EVP_DigestFinal_ex(mdctx, evp_hash.data(), &evp_hash_len) != 1)
-                {
-                    throw std::runtime_error("EVP_DigestFinal_ex failed");
-                }
-
-                fprintf(stderr, "[info] checksum: ");
-                for (unsigned int i = 0; i < evp_hash_len; i++)
-                {
-                    fprintf(stderr, "%02x", evp_hash[i]);
-                }
-                fprintf(stderr, "\n");
-            }
-            else
-            {
-                MPI_Send(state_data_device, num_states_local * 2, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
-            }
-
-        } /* calculate_checksum */
-
         int measure_qubit(int const measure_qubit_num_logical)
         {
 
@@ -2884,7 +2817,6 @@ void measurement_sample() {
 
 int main() {
 
-    constexpr bool flag_calculate_checksum = false;
     constexpr bool flag_save_statevector = false;
 
     setup();
@@ -2896,8 +2828,6 @@ int main() {
     GHZ_circuit_sample();
 
     if (flag_save_statevector) { save_statevector("statevector_output.bin"); }
-    if (flag_calculate_checksum) { calculate_checksum(); }
-
     return 0;
 
 }; /* main */

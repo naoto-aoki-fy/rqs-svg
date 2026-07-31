@@ -1,5 +1,5 @@
 -include config.mk
-LDLIBS ?= -lcurand -lnccl -lssl -lcrypto -ldl
+LDLIBS ?= -lcurand -lnccl -ldl
 NVCC ?= nvcc --forward-unknown-to-host-compiler
 INCLUDE ?= -I./include
 NVCC_CFLAGS = $(CFLAGS_VENDOR) -Wformat=2 $(INCLUDE) -O3 -rdynamic -std=c++17 -Wno-deprecated-gpu-targets $(GENCODE_FLAGS)
