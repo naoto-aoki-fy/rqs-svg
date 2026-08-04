@@ -76,7 +76,7 @@ Code examples for linking against `libqcs.so` live under
 `examples/sharedlibrary/`.
 
 Python bindings are maintained separately at
-[naoto-aoki-fy/rqs-svg-py](https://github.com/naoto-aoki-fy/rqs-svg-py).
+[`rqs-svg-py`](https://github.com/naoto-aoki-fy/rqs-svg-py).
 
 ## Running
 
