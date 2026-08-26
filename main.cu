@@ -12,6 +12,7 @@
 #include <cuda_runtime.h>
 #include <curand.h>
 #include <cuda/std/complex>
+#include <atlc/cuda.hpp>
 
 #include <atlc/check_cuda.hpp>
 #include <atlc/check_curand.hpp>
@@ -268,13 +269,13 @@ int main(int argc, char** argv) {
         ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
 
         my_complex_t* state_data_device;
-        ATLC_CHECK_CUDA(cudaMalloc<void>, (void**)&state_data_device, num_states_local * sizeof(*state_data_device));
+        ATLC_CHECK_CUDA(cudaMalloc, &state_data_device, num_states_local * sizeof(*state_data_device));
         state_data_device_list[gpu_num] = state_data_device;
 
         defer_free_device_mem[gpu_num] = {cudaFree, (void*)state_data_device};
 
         my_float_t* norm_sum_device;
-        ATLC_CHECK_CUDA(cudaMalloc<void>, (void**)&norm_sum_device, (INT64_C(1) << (num_qubits - log_block_size)) * sizeof(my_float_t));
+        ATLC_CHECK_CUDA(cudaMalloc, &norm_sum_device, (INT64_C(1) << (num_qubits - log_block_size)) * sizeof(my_float_t));
         norm_sum_device_list[gpu_num] = norm_sum_device;
         defer_free_norm_sum_device_list[gpu_num] = {cudaFree, (void*)norm_sum_device};
 
@@ -348,7 +349,7 @@ int main(int argc, char** argv) {
                 num_blocks_reduce = 1;
             }
 
-            norm_sum_reduce_kernel<<<num_blocks_reduce, block_size_reduce, sizeof(my_float_t) * block_size_reduce, stream[gpu_num]>>>(state_data_device_list[gpu_num], norm_sum_device_list[gpu_num]);
+            ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, norm_sum_reduce_kernel, num_blocks_reduce, block_size_reduce, sizeof(my_float_t) * block_size_reduce, stream[gpu_num], state_data_device_list[gpu_num], norm_sum_device_list[gpu_num]);
 
             data_length = num_blocks_reduce;
 
@@ -361,7 +362,7 @@ int main(int argc, char** argv) {
                     num_blocks_reduce = 1;
                 }
 
-                sum_reduce_kernel<<<num_blocks_reduce, block_size_reduce, sizeof(my_float_t) * block_size_reduce, stream[gpu_num]>>>(norm_sum_device_list[gpu_num], norm_sum_device_list[gpu_num]);
+                ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, sum_reduce_kernel, num_blocks_reduce, block_size_reduce, sizeof(my_float_t) * block_size_reduce, stream[gpu_num], norm_sum_device_list[gpu_num], norm_sum_device_list[gpu_num]);
 
                 data_length = num_blocks_reduce;
             }
@@ -402,7 +403,7 @@ int main(int argc, char** argv) {
                 num_blocks_reduce = 1;
             }
 
-            normalize_kernel<<<1ULL<<(num_qubits_local+1-log_block_size), block_size, 0, stream[gpu_num]>>>((my_float_t*)(void*)state_data_device_list[gpu_num], normalize_factor);
+            ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, normalize_kernel, 1ULL<<(num_qubits_local+1-log_block_size), block_size, 0, stream[gpu_num], (my_float_t*)(void*)state_data_device_list[gpu_num], normalize_factor);
 
             ATLC_CHECK_CUDA(cudaEventRecord, event_2[gpu_num], stream[gpu_num]);
         }
@@ -445,7 +446,7 @@ int main(int argc, char** argv) {
                 int const gpu_id = gpu_list[gpu_num]; 
                 ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
 
-                cuda_gate<hadamard><<<num_blocks, block_size, 0, stream[gpu_num]>>>(num_gpus, log_num_gpus, gpu_num, num_qubits, target_qubit_num);
+                ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, cuda_gate<hadamard>, num_blocks, block_size, 0, stream[gpu_num], num_gpus, log_num_gpus, gpu_num, num_qubits, target_qubit_num);
             }
 
             if (target_qubit_num >= num_qubits - log_num_gpus) {
