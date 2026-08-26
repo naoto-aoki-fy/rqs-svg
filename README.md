@@ -2,7 +2,7 @@
 
 ## Building
 
-The build requires the NVIDIA CUDA toolkit, OpenSSL, and the header-only
+The build requires the NVIDIA CUDA toolkit and the header-only
 [`atlc`](https://github.com/naoto-aoki-fy/atlc) utility library.
 
 Define any platform-specific compiler, linker, and GPU architecture flags in `config.mk`:

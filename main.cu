@@ -6,7 +6,6 @@
 
 #include <unordered_set>
 
-#include <openssl/evp.h>
 #include <omp.h>
 #include <cuda_runtime.h>
 #include <curand.h>
@@ -133,8 +132,6 @@ int main(int argc, char** argv) {
     setvbuf(stdout, NULL, _IOLBF, 1024 * 512);
 
     bool const do_normalization = false;
-    bool const calc_checksum = true;
-
     std::vector<int> gpu_list{0, 1, 2, 3, 4, 5, 6, 7};
     // std::vector<int> gpu_list{0, 1, 2, 3};
     int const num_gpus = gpu_list.size();
@@ -439,57 +436,6 @@ int main(int argc, char** argv) {
         }
         fprintf(stderr, "[info] elapsed_gpu=%lf\n", elapsed_gpu);
         fprintf(stdout, "%lf\n", elapsed_gpu);
-
-    }
-
-    if (calc_checksum) {
-        fprintf(stderr, "[info] gathering state data\n");
-
-        EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
-        if (!mdctx) {
-            perror("EVP_MD_CTX_new failed");
-            exit(1);
-        }
-
-        if (EVP_DigestInit_ex(mdctx, EVP_sha256(), NULL) != 1) {
-            perror("EVP_DigestInit_ex failed");
-            EVP_MD_CTX_free(mdctx);
-            exit(1);
-        }
-
-        my_complex_t* state_data_host = (my_complex_t*)malloc(num_states_local * sizeof(my_complex_t));
-        ATLC_DEFER_CODE({ free(state_data_host); });
-
-        for(int i = 0; i < num_gpus; i++) {
-
-            int const gpu_i = gpu_list[i]; 
-            ATLC_CHECK_CUDA(cudaSetDevice, gpu_i);
-            ATLC_CHECK_CUDA(cudaMemcpyAsync, state_data_host, state_data_device_list[i], num_states_local * sizeof(my_complex_t), cudaMemcpyDeviceToHost, stream[i]);
-            ATLC_CHECK_CUDA(cudaStreamSynchronize, stream[i]);
-
-            // fwrite(state_data_host, sizeof(my_complex_t), num_states_local, cksumproc.stdin);
-            if (EVP_DigestUpdate(mdctx, state_data_host, num_states_local * sizeof(my_complex_t)) != 1) {
-                perror("EVP_DigestUpdate failed");
-                EVP_MD_CTX_free(mdctx);
-                exit(1);
-            }
-        }
-
-        unsigned char evp_hash[EVP_MAX_MD_SIZE];
-        unsigned int evp_hash_len;
-        if (EVP_DigestFinal_ex(mdctx, evp_hash, &evp_hash_len) != 1) {
-            perror("EVP_DigestFinal_ex failed");
-            EVP_MD_CTX_free(mdctx);
-            exit(1);
-        }
-
-        fprintf(stderr, "[info] checksum: ");
-        for (unsigned int i = 0; i < evp_hash_len; i++) {
-            fprintf(stderr, "%02x", evp_hash[i]);
-        }
-        fprintf(stderr, "\n");
-
-        EVP_MD_CTX_free(mdctx);
 
     }
 
