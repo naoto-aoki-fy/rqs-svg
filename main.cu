@@ -247,6 +247,16 @@ int main(int argc, char** argv) {
 
         for(int target_qubit_num = target_qubit_num_begin; target_qubit_num < target_qubit_num_end; target_qubit_num++) {
 
+            // The first global gate reads state owned by other GPUs.  Wait for
+            // every GPU's preceding local gates before allowing those reads.
+            if (target_qubit_num == num_qubits - log_num_gpus) {
+                for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+                    int const gpu_id = gpu_list[gpu_num];
+                    ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
+                    ATLC_CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
+                }
+            }
+
             for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
 
                 int const gpu_id = gpu_list[gpu_num]; 
