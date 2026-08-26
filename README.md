@@ -1,4 +1,4 @@
-# GPU simple hadamard
+# RQS-SVG Memory Sharing Branch (experimental)
 
 ## Building
 
@@ -11,6 +11,8 @@ LDFLAGS_VENDOR = -L/foo/bar/lib
 GENCODE_FLAGS = -gencode=arch=compute_90,code=sm_90
 ```
 
+These options can be obtained using the [`nvccoptions`](https://github.com/naoto-aoki-fy/nvccoptions) utility.
+
 Then build the simulator with:
 
 ```sh
@@ -19,3 +21,7 @@ make
 
 The resulting executable is written to `bin/qcs`. The output path can be
 overridden when necessary, for example with `make QCS_BIN=main.exe`.
+
+## Acknowledgments
+
+This repository is based on results obtained from a project, JPNP20017, commissioned by the New Energy and Industrial Technology Development Organization (NEDO).
