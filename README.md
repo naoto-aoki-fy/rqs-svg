@@ -2,8 +2,10 @@
 
 ## Building
 
-The build requires the NVIDIA CUDA toolkit and OpenSSL. Define any
-platform-specific compiler, linker, and GPU architecture flags in `config.mk`:
+The build requires the NVIDIA CUDA toolkit, OpenSSL, and the header-only
+[`atlc`](https://github.com/naoto-aoki-fy/atlc) utility library.
+
+Define any platform-specific compiler, linker, and GPU architecture flags in `config.mk`:
 
 ```make
 CFLAGS_VENDOR = -I/foo/bar/include
@@ -19,8 +21,7 @@ Then build the simulator with:
 make
 ```
 
-The resulting executable is written to `bin/qcs`. The output path can be
-overridden when necessary, for example with `make QCS_BIN=main.exe`.
+The resulting executable is written to `bin/qcs`.
 
 ## Acknowledgments
 

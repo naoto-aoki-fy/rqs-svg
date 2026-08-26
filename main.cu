@@ -4,13 +4,7 @@
 #include <cmath>
 #include <stdint.h>
 
-#include <stdexcept>
-#include <string>
-#include <sstream>
-#include <algorithm>
-#include <chrono>
-#include <random>
-#include <utility>
+#include <tuple>
 #include <unordered_set>
 
 #include <openssl/evp.h>
@@ -19,95 +13,19 @@
 #include <curand.h>
 #include <cuda/std/complex>
 
+#include <atlc/check_cuda.hpp>
+#include <atlc/check_curand.hpp>
+#include <atlc/block_reduce_sum.cuh>
+#include <atlc/log2_int.hpp>
+
 #define SQRT2 (1.41421356237309504880168872420969807856967187537694)
 #define INV_SQRT2 (1.0/SQRT2)
-
-int log2_int(int arg) {
-    if(arg<=0) return -1;
-    int value = 0;
-    while(arg>1) {
-        value += 1;
-        arg = arg >> 1;
-    }
-    return value;
-}
 
 typedef double my_float_t;
 typedef cuda::std::complex<my_float_t> my_complex_t;
 
 const int max_num_gpus = 8;
 __constant__ my_complex_t* state_data_device_list_constmem[max_num_gpus];
-
-// 任意のCUDA API関数とその引数を受け取る
-template <typename Func, typename... Args>
-void check_cuda(char const* const filename_abs, int const lineno, char const* const funcname, Func func, Args&&... args)
-{
-    char const* const strrchr_result = strrchr(filename_abs, '/');
-    char const* const filename = strrchr_result? strrchr_result + 1 : filename_abs;
-    // 引数を文字列化するためのostringstream
-    std::ostringstream oss;
-    ((oss << args << ", "), ...);  // C++17の折り返し式を使って引数を順番に追加
-    std::string args_str = oss.str();
-    if (!args_str.empty()) {
-        args_str.pop_back();  // 最後の", "を削除
-        args_str.pop_back();
-    }
-
-    // 実際にCUDA関数を呼び出し
-    cudaError_t err = func(std::forward<Args>(args)...);
-    if (err != cudaSuccess)
-    {
-        fprintf(stderr, "[debug] %s:%d call:%s args:%s error:%s\n", filename, lineno, funcname, args_str.c_str(), cudaGetErrorString(err));
-        exit(1);
-    }
-}
-
-// マクロで簡単に呼び出せるようにラップ
-#define CHECK_CUDA(func, ...) check_cuda(__FILE__, __LINE__, #func, func, __VA_ARGS__)
-
-#define CASE_RETURN(code) case code: return #code
-
-static const char *curandGetErrorString(curandStatus_t error) {
-    switch (error) {
-        CASE_RETURN(CURAND_STATUS_SUCCESS);
-        CASE_RETURN(CURAND_STATUS_VERSION_MISMATCH);
-        CASE_RETURN(CURAND_STATUS_NOT_INITIALIZED);
-        CASE_RETURN(CURAND_STATUS_ALLOCATION_FAILED);
-        CASE_RETURN(CURAND_STATUS_TYPE_ERROR);
-        CASE_RETURN(CURAND_STATUS_OUT_OF_RANGE);
-        CASE_RETURN(CURAND_STATUS_LENGTH_NOT_MULTIPLE);
-        CASE_RETURN(CURAND_STATUS_DOUBLE_PRECISION_REQUIRED);
-        CASE_RETURN(CURAND_STATUS_LAUNCH_FAILURE);
-        CASE_RETURN(CURAND_STATUS_PREEXISTING_FAILURE);
-        CASE_RETURN(CURAND_STATUS_INITIALIZATION_FAILED);
-        CASE_RETURN(CURAND_STATUS_ARCH_MISMATCH);
-        CASE_RETURN(CURAND_STATUS_INTERNAL_ERROR);
-    }
-    return "<unknown>";
-}
-
-template <typename Func, typename... Args>
-void check_curand(char const* const filename_abs, int const lineno, char const* const funcname, Func func, Args&&... args)
-{
-    char const* const strrchr_result = strrchr(filename_abs, '/');
-    char const* const filename = strrchr_result? strrchr_result + 1 : filename_abs;
-    std::ostringstream oss;
-    ((oss << args << ", "), ...);
-    std::string args_str = oss.str();
-    if (!args_str.empty()) {
-        args_str.pop_back();
-        args_str.pop_back();
-    }
-
-    curandStatus_t err = func(std::forward<Args>(args)...);
-    if (err != CURAND_STATUS_SUCCESS)
-    {
-        fprintf(stderr, "[debug] %s:%d call:%s args:%s error:%s\n", filename, lineno, funcname, args_str.c_str(), curandGetErrorString(err));
-        exit(1);
-    }
-}
-
-#define CHECK_CURAND(func, ...) check_curand(__FILE__, __LINE__, #func, func, __VA_ARGS__)
 
 // 可変長引数を取る関数ポインタをラップするテンプレート
 template <typename Func, typename... Args>
@@ -160,45 +78,23 @@ private:
 
 __global__ void norm_sum_reduce_kernel(my_complex_t const* const input_global, my_float_t* const output_global)
 {
-    extern __shared__ my_float_t sum_shared[];
+    extern __shared__ my_float_t warp_partials[];
     int64_t const idx =  blockDim.x * blockIdx.x + threadIdx.x;
-    sum_shared[threadIdx.x] = cuda::std::norm(input_global[idx]);
-
-    my_float_t sum_cached;
-    sum_cached = sum_shared[threadIdx.x];
-    for(int active_threads = blockDim.x; active_threads > 1;) {
-        int const half_active_threads = active_threads >> 1;
-        active_threads = (active_threads + 1) >> 1;
-        __syncthreads();
-        if(threadIdx.x < half_active_threads){
-            sum_cached += sum_shared[threadIdx.x + active_threads];
-            sum_shared[threadIdx.x] = sum_cached;
-        }
-    }
+    my_float_t sum = cuda::std::norm(input_global[idx]);
+    atlc::block_reduce_sum_core(&sum, 1, warp_partials);
     if (threadIdx.x == 0) {
-        output_global[blockIdx.x] = sum_shared[0];
+        output_global[blockIdx.x] = sum;
     }
 }
 
 __global__ void sum_reduce_kernel(my_float_t const* const input_global, my_float_t* const output_global)
 {
-    extern __shared__ my_float_t sum_shared[];
+    extern __shared__ my_float_t warp_partials[];
     int64_t const idx =  blockDim.x * blockIdx.x + threadIdx.x;
-    sum_shared[threadIdx.x] = input_global[idx];
-
-    my_float_t sum_cached;
-    sum_cached = sum_shared[threadIdx.x];
-    for(int active_threads = blockDim.x; active_threads > 1;) {
-        int const half_active_threads = active_threads >> 1;
-        active_threads = (active_threads + 1) >> 1;
-        __syncthreads();
-        if(threadIdx.x < half_active_threads){
-            sum_cached += sum_shared[threadIdx.x + active_threads];
-            sum_shared[threadIdx.x] = sum_cached;
-        }
-    }
+    my_float_t sum = input_global[idx];
+    atlc::block_reduce_sum_core(&sum, 1, warp_partials);
     if (threadIdx.x == 0) {
-        output_global[blockIdx.x] = sum_shared[0];
+        output_global[blockIdx.x] = sum;
     }
 }
 
@@ -291,7 +187,7 @@ int main(int argc, char** argv) {
     std::vector<int> gpu_list{0, 1, 2, 3, 4, 5, 6, 7};
     // std::vector<int> gpu_list{0, 1, 2, 3};
     int const num_gpus = gpu_list.size();
-    int const log_num_gpus = log2_int(num_gpus);
+    int const log_num_gpus = atlc::log2_int(num_gpus);
     fprintf(stderr, "[info] num_gpus=%d (", num_gpus);
     for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
         fprintf(stderr, "%d, ", gpu_list[gpu_num]);
@@ -327,15 +223,15 @@ int main(int argc, char** argv) {
     for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
 
         int const gpu_id = gpu_list[gpu_num]; 
-        CHECK_CUDA(cudaSetDevice, gpu_id);
+        ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
 
-        CHECK_CUDA(cudaStreamCreate, &stream[gpu_num]);
+        ATLC_CHECK_CUDA(cudaStreamCreate, &stream[gpu_num]);
         defer_destroy_streams[gpu_num] = {cudaStreamDestroy, stream[gpu_num]};
 
-        CHECK_CUDA(cudaEventCreateWithFlags, &event_1[gpu_num], cudaEventDefault);
+        ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &event_1[gpu_num], cudaEventDefault);
         defer_destroy_event_1[gpu_num] = {cudaEventDestroy, event_1[gpu_num]};
 
-        CHECK_CUDA(cudaEventCreateWithFlags, &event_2[gpu_num], cudaEventDefault);
+        ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &event_2[gpu_num], cudaEventDefault);
         defer_destroy_event_2[gpu_num] = {cudaEventDestroy, event_2[gpu_num]};
 
     }
@@ -343,10 +239,10 @@ int main(int argc, char** argv) {
     std::vector<my_complex_t**> state_data_device_list_constmem_addr(num_gpus);
     for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
         int const gpu_id = gpu_list[gpu_num];
-        CHECK_CUDA(cudaSetDevice, gpu_id);
+        ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
 
         my_complex_t** addr;
-        CHECK_CUDA(cudaGetSymbolAddress<decltype(state_data_device_list_constmem)>, (void**)&addr, state_data_device_list_constmem);
+        ATLC_CHECK_CUDA(cudaGetSymbolAddress<decltype(state_data_device_list_constmem)>, (void**)&addr, state_data_device_list_constmem);
 
         state_data_device_list_constmem_addr[gpu_num] = addr;
     }
@@ -369,16 +265,16 @@ int main(int argc, char** argv) {
     for (int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
 
         int const gpu_id = gpu_list[gpu_num]; 
-        CHECK_CUDA(cudaSetDevice, gpu_id);
+        ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
 
         my_complex_t* state_data_device;
-        CHECK_CUDA(cudaMalloc<void>, (void**)&state_data_device, num_states_local * sizeof(*state_data_device));
+        ATLC_CHECK_CUDA(cudaMalloc<void>, (void**)&state_data_device, num_states_local * sizeof(*state_data_device));
         state_data_device_list[gpu_num] = state_data_device;
 
         defer_free_device_mem[gpu_num] = {cudaFree, (void*)state_data_device};
 
         my_float_t* norm_sum_device;
-        CHECK_CUDA(cudaMalloc<void>, (void**)&norm_sum_device, (INT64_C(1) << (num_qubits - log_block_size)) * sizeof(my_float_t));
+        ATLC_CHECK_CUDA(cudaMalloc<void>, (void**)&norm_sum_device, (INT64_C(1) << (num_qubits - log_block_size)) * sizeof(my_float_t));
         norm_sum_device_list[gpu_num] = norm_sum_device;
         defer_free_norm_sum_device_list[gpu_num] = {cudaFree, (void*)norm_sum_device};
 
@@ -386,8 +282,8 @@ int main(int argc, char** argv) {
 
     for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
         int const gpu_id = gpu_list[gpu_num];
-        CHECK_CUDA(cudaSetDevice, gpu_id);
-        CHECK_CUDA(cudaMemcpyAsync, state_data_device_list_constmem_addr[gpu_num], &state_data_device_list[0], state_data_device_list.size() * sizeof(state_data_device_list[0]), cudaMemcpyHostToDevice, stream[gpu_num]);
+        ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
+        ATLC_CHECK_CUDA(cudaMemcpyAsync, state_data_device_list_constmem_addr[gpu_num], &state_data_device_list[0], state_data_device_list.size() * sizeof(state_data_device_list[0]), cudaMemcpyHostToDevice, stream[gpu_num]);
     }
 
     for(int gpu_num = 0; gpu_num < gpu_list_dedup.size(); gpu_num++) {
@@ -395,8 +291,8 @@ int main(int argc, char** argv) {
         for(int gpu_num_2 = 0; gpu_num_2 < gpu_list_dedup.size(); gpu_num_2++) {
             if(gpu_num == gpu_num_2) continue;
             int const gpu_id_2 = gpu_list_dedup[gpu_num_2]; 
-            CHECK_CUDA(cudaSetDevice, gpu_id);
-            CHECK_CUDA(cudaDeviceEnablePeerAccess, gpu_id_2, 0);
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
+            ATLC_CHECK_CUDA(cudaDeviceEnablePeerAccess, gpu_id_2, 0);
         }
     }
 
@@ -406,7 +302,7 @@ int main(int argc, char** argv) {
             if(gpu_num == gpu_num_2) continue;
             int const gpu_id_2 = gpu_list_dedup[gpu_num_2]; 
             int canAccessPeer;
-            CHECK_CUDA(cudaDeviceCanAccessPeer, &canAccessPeer, gpu_id, gpu_id_2);
+            ATLC_CHECK_CUDA(cudaDeviceCanAccessPeer, &canAccessPeer, gpu_id, gpu_id_2);
             if (!canAccessPeer) {
                 fprintf(stderr, "[error] GPU%d can not access GPU%d\n", gpu_id, gpu_id_2);
             }
@@ -418,10 +314,10 @@ int main(int argc, char** argv) {
     std::vector<curandGenerator_t> rng_device_list(num_gpus);
     for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
         int const gpu_id = gpu_list[gpu_num];
-        CHECK_CUDA(cudaSetDevice, gpu_id);
-        CHECK_CURAND(curandCreateGenerator, &rng_device_list[gpu_num], CURAND_RNG_PSEUDO_DEFAULT);
-        CHECK_CURAND(curandSetPseudoRandomGeneratorSeed, rng_device_list[gpu_num], rng_seed + gpu_num);
-        CHECK_CURAND(curandSetStream, rng_device_list[gpu_num], stream[gpu_num]);
+        ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
+        ATLC_CHECK_CURAND(curandCreateGenerator, &rng_device_list[gpu_num], CURAND_RNG_PSEUDO_DEFAULT);
+        ATLC_CHECK_CURAND(curandSetPseudoRandomGeneratorSeed, rng_device_list[gpu_num], rng_seed + gpu_num);
+        ATLC_CHECK_CURAND(curandSetStream, rng_device_list[gpu_num], stream[gpu_num]);
     }
 
     if (do_normalization) {
@@ -429,16 +325,16 @@ int main(int argc, char** argv) {
         fprintf(stderr, "[info] gpu reduce\n");
         for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
             int const gpu_id = gpu_list[gpu_num];
-            CHECK_CUDA(cudaSetDevice, gpu_id);
-            CHECK_CUDA(cudaEventRecord, event_1[gpu_num], stream[gpu_num]);
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
+            ATLC_CHECK_CUDA(cudaEventRecord, event_1[gpu_num], stream[gpu_num]);
         }
 
         std::vector<my_float_t> norm_sum_list(num_gpus);
         for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
             int const gpu_id = gpu_list[gpu_num];
-            CHECK_CUDA(cudaSetDevice, gpu_id);
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
 
-            CHECK_CURAND(curandGenerateNormalDouble, rng_device_list[gpu_num], (my_float_t*)(void*)state_data_device_list[gpu_num], num_states_local * 2, 0.0, 1.0);
+            ATLC_CHECK_CURAND(curandGenerateNormalDouble, rng_device_list[gpu_num], (my_float_t*)(void*)state_data_device_list[gpu_num], num_states_local * 2, 0.0, 1.0);
 
             int64_t data_length = num_states_local;
             int64_t num_blocks_reduce;
@@ -470,20 +366,20 @@ int main(int argc, char** argv) {
                 data_length = num_blocks_reduce;
             }
 
-            CHECK_CUDA(cudaMemcpyAsync, &norm_sum_list[gpu_num], norm_sum_device_list[gpu_num], sizeof(my_float_t), cudaMemcpyDeviceToHost, stream[gpu_num]);
+            ATLC_CHECK_CUDA(cudaMemcpyAsync, &norm_sum_list[gpu_num], norm_sum_device_list[gpu_num], sizeof(my_float_t), cudaMemcpyDeviceToHost, stream[gpu_num]);
         }
 
         for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
             int const gpu_id = gpu_list[gpu_num];
-            CHECK_CUDA(cudaSetDevice, gpu_id);
-            CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
+            ATLC_CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
         }
 
         my_float_t norm_sum_gpu = 0;
         for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
             int const gpu_id = gpu_list[gpu_num];
-            CHECK_CUDA(cudaSetDevice, gpu_id);
-            CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
+            ATLC_CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
             norm_sum_gpu += norm_sum_list[gpu_num];
         }
         fprintf(stderr, "[info] norm_sum_gpu=%lf\n", norm_sum_gpu);
@@ -492,7 +388,7 @@ int main(int argc, char** argv) {
         my_float_t const normalize_factor = 1.0 / sqrt(norm_sum_gpu);
         for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
             int const gpu_id = gpu_list[gpu_num];
-            CHECK_CUDA(cudaSetDevice, gpu_id);
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
 
             int64_t data_length = num_states_local * 2;
             int64_t num_blocks_reduce;
@@ -508,21 +404,21 @@ int main(int argc, char** argv) {
 
             normalize_kernel<<<1ULL<<(num_qubits_local+1-log_block_size), block_size, 0, stream[gpu_num]>>>((my_float_t*)(void*)state_data_device_list[gpu_num], normalize_factor);
 
-            CHECK_CUDA(cudaEventRecord, event_2[gpu_num], stream[gpu_num]);
+            ATLC_CHECK_CUDA(cudaEventRecord, event_2[gpu_num], stream[gpu_num]);
         }
         for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
             int const gpu_id = gpu_list[gpu_num];
-            CHECK_CUDA(cudaSetDevice, gpu_id);
-            CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
+            ATLC_CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
         }
 
         double elapsed_rng = 0;
         for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
             int const gpu_id = gpu_list[gpu_num]; 
-            CHECK_CUDA(cudaSetDevice, gpu_id);
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
 
             float elapsed_i_ms;
-            CHECK_CUDA(cudaEventElapsedTime, &elapsed_i_ms, event_1[gpu_num], event_2[gpu_num]);
+            ATLC_CHECK_CUDA(cudaEventElapsedTime, &elapsed_i_ms, event_1[gpu_num], event_2[gpu_num]);
             double const elapsed_i = elapsed_i_ms * 1e-3;
 
             if (elapsed_i > elapsed_rng) {
@@ -538,8 +434,8 @@ int main(int argc, char** argv) {
 
         for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
             int const gpu_id = gpu_list[gpu_num]; 
-            CHECK_CUDA(cudaSetDevice, gpu_id);
-            CHECK_CUDA(cudaEventRecord, event_1[gpu_num], stream[gpu_num]);
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
+            ATLC_CHECK_CUDA(cudaEventRecord, event_1[gpu_num], stream[gpu_num]);
         }
 
         for(int target_qubit_num = target_qubit_num_begin; target_qubit_num < target_qubit_num_end; target_qubit_num++) {
@@ -547,7 +443,7 @@ int main(int argc, char** argv) {
             for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
 
                 int const gpu_id = gpu_list[gpu_num]; 
-                CHECK_CUDA(cudaSetDevice, gpu_id);
+                ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
 
                 cuda_gate<hadamard><<<num_blocks, block_size, 0, stream[gpu_num]>>>(num_gpus, log_num_gpus, gpu_num, num_qubits, target_qubit_num);
             }
@@ -555,8 +451,8 @@ int main(int argc, char** argv) {
             if (target_qubit_num >= num_qubits - log_num_gpus) {
                 for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
                     int const gpu_id = gpu_list[gpu_num]; 
-                    CHECK_CUDA(cudaSetDevice, gpu_id);
-                    CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
+                    ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
+                    ATLC_CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
                 }
             }
 
@@ -564,23 +460,23 @@ int main(int argc, char** argv) {
 
         for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
             int const gpu_id = gpu_list[gpu_num]; 
-            CHECK_CUDA(cudaSetDevice, gpu_id);
-            CHECK_CUDA(cudaEventRecord, event_2[gpu_num], stream[gpu_num]);
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
+            ATLC_CHECK_CUDA(cudaEventRecord, event_2[gpu_num], stream[gpu_num]);
         }
 
         for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
             int const gpu_id = gpu_list[gpu_num]; 
-            CHECK_CUDA(cudaSetDevice, gpu_id);
-            CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
+            ATLC_CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
         }
 
         double elapsed_gpu = 0;
         for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
             int const gpu_id = gpu_list[gpu_num]; 
-            CHECK_CUDA(cudaSetDevice, gpu_id);
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
 
             float elapsed_i_ms;
-            CHECK_CUDA(cudaEventElapsedTime, &elapsed_i_ms, event_1[gpu_num], event_2[gpu_num]);
+            ATLC_CHECK_CUDA(cudaEventElapsedTime, &elapsed_i_ms, event_1[gpu_num], event_2[gpu_num]);
             double const elapsed_i = elapsed_i_ms * 1e-3;
 
             if(elapsed_i > elapsed_gpu) {
@@ -613,9 +509,9 @@ int main(int argc, char** argv) {
         for(int i = 0; i < num_gpus; i++) {
 
             int const gpu_i = gpu_list[i]; 
-            CHECK_CUDA(cudaSetDevice, gpu_i);
-            CHECK_CUDA(cudaMemcpyAsync, state_data_host, state_data_device_list[i], num_states_local * sizeof(my_complex_t), cudaMemcpyDeviceToHost, stream[i]);
-            CHECK_CUDA(cudaStreamSynchronize, stream[i]);
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_i);
+            ATLC_CHECK_CUDA(cudaMemcpyAsync, state_data_host, state_data_device_list[i], num_states_local * sizeof(my_complex_t), cudaMemcpyDeviceToHost, stream[i]);
+            ATLC_CHECK_CUDA(cudaStreamSynchronize, stream[i]);
 
             // fwrite(state_data_host, sizeof(my_complex_t), num_states_local, cksumproc.stdin);
             if (EVP_DigestUpdate(mdctx, state_data_host, num_states_local * sizeof(my_complex_t)) != 1) {
