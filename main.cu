@@ -5,7 +5,8 @@
 #include <cerrno>
 #include <climits>
 #include <stdint.h>
-#include <getopt.h>
+
+#include "cmdline.h"
 
 #include <unordered_set>
 #include <vector>
@@ -26,23 +27,6 @@ typedef cuda::std::complex<my_float_t> my_complex_t;
 
 const int max_num_gpus = 8;
 __constant__ my_complex_t* state_data_device_list_constmem[max_num_gpus];
-
-static void print_usage(char const* program_name) {
-    fprintf(stderr, "Usage: %s [-g GPU_LIST] [-q NUM_QUBITS]\n", program_name);
-    fprintf(stderr, "  -g, --gpu_list GPU_LIST      Comma-separated GPU IDs (default: 0,1,2,3,4,5,6,7)\n");
-    fprintf(stderr, "  -q, --num_qubits NUM_QUBITS  Number of qubits (default: 24)\n");
-}
-
-static bool parse_int(char const* value, int* result) {
-    char* end;
-    errno = 0;
-    long const parsed = strtol(value, &end, 10);
-    if (errno != 0 || end == value || *end != '\0' || parsed < 0 || parsed > INT_MAX) {
-        return false;
-    }
-    *result = static_cast<int>(parsed);
-    return true;
-}
 
 static bool parse_gpu_list(char const* value, std::vector<int>* gpu_list) {
     gpu_list->clear();
@@ -141,45 +125,28 @@ int main(int argc, char** argv) {
 
     setvbuf(stdout, NULL, _IOLBF, 1024 * 512);
 
-    std::vector<int> gpu_list{0, 1, 2, 3, 4, 5, 6, 7};
-    int num_qubits = 24;
-
-    static struct option const long_options[] = {
-        {"gpu_list", required_argument, NULL, 'g'},
-        {"num_qubits", required_argument, NULL, 'q'},
-        {"help", no_argument, NULL, 'h'},
-        {NULL, 0, NULL, 0}
-    };
-    int option;
-    while ((option = getopt_long(argc, argv, "g:q:h", long_options, NULL)) != -1) {
-        switch (option) {
-        case 'g':
-            if (!parse_gpu_list(optarg, &gpu_list)) {
-                fprintf(stderr, "[error] invalid GPU list: %s\n", optarg);
-                print_usage(argv[0]);
-                return EXIT_FAILURE;
-            }
-            break;
-        case 'q':
-            if (!parse_int(optarg, &num_qubits) || num_qubits == 0 || num_qubits >= 63) {
-                fprintf(stderr, "[error] num_qubits must be between 1 and 62: %s\n", optarg);
-                print_usage(argv[0]);
-                return EXIT_FAILURE;
-            }
-            break;
-        case 'h':
-            print_usage(argv[0]);
-            return EXIT_SUCCESS;
-        default:
-            print_usage(argv[0]);
-            return EXIT_FAILURE;
-        }
-    }
-    if (optind != argc) {
-        fprintf(stderr, "[error] unexpected argument: %s\n", argv[optind]);
-        print_usage(argv[0]);
+    struct gengetopt_args_info args_info;
+    if (cmdline_parser(argc, argv, &args_info) != 0) {
         return EXIT_FAILURE;
     }
+
+    std::vector<int> gpu_list;
+    if (!parse_gpu_list(args_info.gpus_arg, &gpu_list)) {
+        fprintf(stderr, "[error] invalid GPU list: %s\n", args_info.gpus_arg);
+        cmdline_parser_print_help();
+        cmdline_parser_free(&args_info);
+        return EXIT_FAILURE;
+    }
+
+    int const num_qubits = args_info.num_qubits_arg;
+    if (num_qubits <= 0 || num_qubits >= 63) {
+        fprintf(stderr, "[error] --num-qubits must be between 1 and 62: %d\n", num_qubits);
+        cmdline_parser_print_help();
+        cmdline_parser_free(&args_info);
+        return EXIT_FAILURE;
+    }
+    cmdline_parser_free(&args_info);
+
     if (gpu_list.size() > max_num_gpus || (gpu_list.size() & (gpu_list.size() - 1)) != 0) {
         fprintf(stderr, "[error] GPU list must contain 1, 2, 4, or 8 GPU IDs\n");
         return EXIT_FAILURE;
