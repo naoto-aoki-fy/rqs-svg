@@ -4,7 +4,6 @@
 #include <cmath>
 #include <stdint.h>
 
-#include <tuple>
 #include <unordered_set>
 
 #include <openssl/evp.h>
@@ -27,55 +26,6 @@ typedef cuda::std::complex<my_float_t> my_complex_t;
 
 const int max_num_gpus = 8;
 __constant__ my_complex_t* state_data_device_list_constmem[max_num_gpus];
-
-// 可変長引数を取る関数ポインタをラップするテンプレート
-template <typename Func, typename... Args>
-class Defer {
-public:
-    // デフォルトコンストラクタ
-    Defer() : valid_(false) {}
-
-    // コンストラクタで関数ポインタと引数を受け取る
-    Defer(Func func, Args... args)
-        : func_(func), args_(args...), valid_(true) {}
-
-    // ムーブ代入演算子
-    Defer& operator=(Defer&& other) noexcept {
-        if (this != &other) {
-            func_ = other.func_;
-            args_ = other.args_;
-            valid_ = other.valid_;
-            other.valid_ = false;
-        }
-        return *this;
-    }
-
-    // ムーブコンストラクタ
-    Defer(Defer&& other) noexcept
-        : func_(other.func_), args_(other.args_), valid_(other.valid_) {
-        other.valid_ = false;
-    }
-
-    // デストラクタで関数ポインタを呼び出す
-    ~Defer() {
-        if (valid_) {
-            call(std::index_sequence_for<Args...>{});
-        }
-    }
-
-private:
-    // 関数ポインタ
-    Func func_;
-    // 関数の引数（可変長引数をタプルで保持）
-    std::tuple<Args...> args_;
-    bool valid_;
-
-    // 引数を展開して関数を呼び出す
-    template <std::size_t... I>
-    void call(std::index_sequence<I...>) {
-        func_(std::get<I>(args_)...);
-    }
-};
 
 __global__ void norm_sum_reduce_kernel(my_complex_t const* const input_global, my_float_t* const output_global)
 {
@@ -217,25 +167,26 @@ int main(int argc, char** argv) {
     std::vector<cudaEvent_t> event_1(num_gpus);
     std::vector<cudaEvent_t> event_2(num_gpus);
 
-    std::vector<decltype(Defer(cudaStreamDestroy, stream[0]))> defer_destroy_streams(num_gpus);
-    std::vector<decltype(Defer(cudaEventDestroy, event_1[0]))> defer_destroy_event_1(num_gpus);
-    std::vector<decltype(Defer(cudaEventDestroy, event_2[0]))> defer_destroy_event_2(num_gpus);
-
     for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
 
         int const gpu_id = gpu_list[gpu_num]; 
         ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
 
         ATLC_CHECK_CUDA(cudaStreamCreate, &stream[gpu_num]);
-        defer_destroy_streams[gpu_num] = {cudaStreamDestroy, stream[gpu_num]};
 
         ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &event_1[gpu_num], cudaEventDefault);
-        defer_destroy_event_1[gpu_num] = {cudaEventDestroy, event_1[gpu_num]};
 
         ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &event_2[gpu_num], cudaEventDefault);
-        defer_destroy_event_2[gpu_num] = {cudaEventDestroy, event_2[gpu_num]};
 
     }
+    ATLC_DEFER_CODE({
+        for (int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[gpu_num]);
+            ATLC_CHECK_CUDA(cudaEventDestroy, event_2[gpu_num]);
+            ATLC_CHECK_CUDA(cudaEventDestroy, event_1[gpu_num]);
+            ATLC_CHECK_CUDA(cudaStreamDestroy, stream[gpu_num]);
+        }
+    });
 
     std::vector<my_complex_t**> state_data_device_list_constmem_addr(num_gpus);
     for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
@@ -258,10 +209,8 @@ int main(int argc, char** argv) {
     fprintf(stderr, "[info] malloc device memory\n");
 
     std::vector<my_complex_t*> state_data_device_list(num_gpus);
-    std::vector<decltype(Defer(cudaFree, (void*)0))> defer_free_device_mem(num_gpus);
 
     std::vector<my_float_t*> norm_sum_device_list(num_gpus);
-    std::vector<decltype(Defer(cudaFree, (void*)0))> defer_free_norm_sum_device_list(num_gpus);
 
     for (int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
 
@@ -272,14 +221,18 @@ int main(int argc, char** argv) {
         ATLC_CHECK_CUDA(cudaMalloc, &state_data_device, num_states_local * sizeof(*state_data_device));
         state_data_device_list[gpu_num] = state_data_device;
 
-        defer_free_device_mem[gpu_num] = {cudaFree, (void*)state_data_device};
-
         my_float_t* norm_sum_device;
         ATLC_CHECK_CUDA(cudaMalloc, &norm_sum_device, (INT64_C(1) << (num_qubits - log_block_size)) * sizeof(my_float_t));
         norm_sum_device_list[gpu_num] = norm_sum_device;
-        defer_free_norm_sum_device_list[gpu_num] = {cudaFree, (void*)norm_sum_device};
 
     }
+    ATLC_DEFER_CODE({
+        for (int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[gpu_num]);
+            ATLC_CHECK_CUDA(cudaFree, norm_sum_device_list[gpu_num]);
+            ATLC_CHECK_CUDA(cudaFree, state_data_device_list[gpu_num]);
+        }
+    });
 
     for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
         int const gpu_id = gpu_list[gpu_num];
@@ -505,7 +458,7 @@ int main(int argc, char** argv) {
         }
 
         my_complex_t* state_data_host = (my_complex_t*)malloc(num_states_local * sizeof(my_complex_t));
-        decltype(Defer(free, (void*)0)) defer_free_state_data_host(free, (void*)state_data_host);
+        ATLC_DEFER_CODE({ free(state_data_host); });
 
         for(int i = 0; i < num_gpus; i++) {
 
