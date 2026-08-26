@@ -1,0 +1,6 @@
+package "qcs"
+version "1.0"
+purpose "Run the multi-GPU quantum circuit simulator."
+
+option "gpus" g "Comma-separated GPU IDs" string default="0,1,2,3,4,5,6,7"
+option "num-qubits" q "Number of qubits" int default="24"
