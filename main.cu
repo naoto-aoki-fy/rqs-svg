@@ -2,9 +2,13 @@
 #include <cstdio>
 #include <cstring>
 #include <cmath>
+#include <cerrno>
+#include <climits>
 #include <stdint.h>
+#include <getopt.h>
 
 #include <unordered_set>
+#include <vector>
 
 #include <omp.h>
 #include <cuda_runtime.h>
@@ -22,6 +26,43 @@ typedef cuda::std::complex<my_float_t> my_complex_t;
 
 const int max_num_gpus = 8;
 __constant__ my_complex_t* state_data_device_list_constmem[max_num_gpus];
+
+static void print_usage(char const* program_name) {
+    fprintf(stderr, "Usage: %s [-g GPU_LIST] [-q NUM_QUBITS]\n", program_name);
+    fprintf(stderr, "  -g, --gpu_list GPU_LIST      Comma-separated GPU IDs (default: 0,1,2,3,4,5,6,7)\n");
+    fprintf(stderr, "  -q, --num_qubits NUM_QUBITS  Number of qubits (default: 24)\n");
+}
+
+static bool parse_int(char const* value, int* result) {
+    char* end;
+    errno = 0;
+    long const parsed = strtol(value, &end, 10);
+    if (errno != 0 || end == value || *end != '\0' || parsed < 0 || parsed > INT_MAX) {
+        return false;
+    }
+    *result = static_cast<int>(parsed);
+    return true;
+}
+
+static bool parse_gpu_list(char const* value, std::vector<int>* gpu_list) {
+    gpu_list->clear();
+    char const* current = value;
+    while (*current != '\0') {
+        char* end;
+        errno = 0;
+        long const gpu_id = strtol(current, &end, 10);
+        if (errno != 0 || end == current || gpu_id < 0 || gpu_id > INT_MAX ||
+            (*end != ',' && *end != '\0')) {
+            return false;
+        }
+        gpu_list->push_back(static_cast<int>(gpu_id));
+        if (*end == '\0') {
+            return true;
+        }
+        current = end + 1;
+    }
+    return false;
+}
 
 class hadamard_naive { public:
     static __device__ __host__ void apply(int const num_split_areas, int const log_num_split_areas, int64_t const thread_num, int64_t const num_qubits, int64_t const target_qubit_num, my_complex_t** const state_data) {
@@ -101,16 +142,61 @@ int main(int argc, char** argv) {
     setvbuf(stdout, NULL, _IOLBF, 1024 * 512);
 
     std::vector<int> gpu_list{0, 1, 2, 3, 4, 5, 6, 7};
-    // std::vector<int> gpu_list{0, 1, 2, 3};
+    int num_qubits = 24;
+
+    static struct option const long_options[] = {
+        {"gpu_list", required_argument, NULL, 'g'},
+        {"num_qubits", required_argument, NULL, 'q'},
+        {"help", no_argument, NULL, 'h'},
+        {NULL, 0, NULL, 0}
+    };
+    int option;
+    while ((option = getopt_long(argc, argv, "g:q:h", long_options, NULL)) != -1) {
+        switch (option) {
+        case 'g':
+            if (!parse_gpu_list(optarg, &gpu_list)) {
+                fprintf(stderr, "[error] invalid GPU list: %s\n", optarg);
+                print_usage(argv[0]);
+                return EXIT_FAILURE;
+            }
+            break;
+        case 'q':
+            if (!parse_int(optarg, &num_qubits) || num_qubits == 0 || num_qubits >= 63) {
+                fprintf(stderr, "[error] num_qubits must be between 1 and 62: %s\n", optarg);
+                print_usage(argv[0]);
+                return EXIT_FAILURE;
+            }
+            break;
+        case 'h':
+            print_usage(argv[0]);
+            return EXIT_SUCCESS;
+        default:
+            print_usage(argv[0]);
+            return EXIT_FAILURE;
+        }
+    }
+    if (optind != argc) {
+        fprintf(stderr, "[error] unexpected argument: %s\n", argv[optind]);
+        print_usage(argv[0]);
+        return EXIT_FAILURE;
+    }
+    if (gpu_list.size() > max_num_gpus || (gpu_list.size() & (gpu_list.size() - 1)) != 0) {
+        fprintf(stderr, "[error] GPU list must contain 1, 2, 4, or 8 GPU IDs\n");
+        return EXIT_FAILURE;
+    }
+
     int const num_gpus = gpu_list.size();
     int const log_num_gpus = atlc::log2_int(num_gpus);
+    if (num_qubits <= log_num_gpus) {
+        fprintf(stderr, "[error] num_qubits must be greater than log2(num_gpus)\n");
+        return EXIT_FAILURE;
+    }
     fprintf(stderr, "[info] num_gpus=%d (", num_gpus);
     for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
         fprintf(stderr, "%d, ", gpu_list[gpu_num]);
     }
     fprintf(stderr, ")\n");
 
-    int const num_qubits = 24;
     fprintf(stderr, "[info] num_qubits=%d\n", num_qubits);
 
     int const num_samples = 64;
