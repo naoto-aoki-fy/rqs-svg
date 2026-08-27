@@ -1103,23 +1103,21 @@ namespace qcs
 
     }
 
-    __global__ void clear_alternative_state(int target_qubit_num, int measured_value)
+    __global__ void materialize_projection_kernel(
+        qcs::complex_t *state,
+        uint64_t num_states_local,
+        uint64_t local_mask,
+        uint64_t local_value)
     {
-        int64_t const thread_num = (uint64_t)threadIdx.x + (uint64_t)blockIdx.x * (uint64_t)blockDim.x;
-
-        // generate index_state_0
-        uint64_t lower_mask = 0;
-        uint64_t const mask = (UINT64_C(1) << (target_qubit_num)) - 1;
-        uint64_t const upper_mask = mask & ~lower_mask;
-        lower_mask = mask;
-        uint64_t index_state = (thread_num & upper_mask) | ((thread_num & ~lower_mask) << 1);
-
-        if (!measured_value)
+        uint64_t const first = (uint64_t)blockIdx.x * blockDim.x + threadIdx.x;
+        uint64_t const stride = (uint64_t)gridDim.x * blockDim.x;
+        for (uint64_t i = first; i < num_states_local; i += stride)
         {
-            index_state = index_state | (UINT64_C(1) << target_qubit_num);
+            if (((i ^ local_value) & local_mask) != 0)
+            {
+                state[i] = qcs::complex_t(0.0, 0.0);
+            }
         }
-
-        qcs::kernel_common_constant.state_data_device[index_state] = 0.0;
     }
 
     template <typename GateType>
@@ -1770,6 +1768,10 @@ namespace qcs
         std::vector<int> measured_1_qubit_num_logical_list_copy;
         std::vector<int> measured_0_qubit_num_logical_list_copy;
 
+        uint64_t measured_mask_logical = 0;
+        uint64_t measured_value_logical = 0;
+        uint64_t pending_projection_mask_logical = 0;
+
         std::vector<int> target_qubit_num_logical_list;
         std::vector<int> positive_control_qubit_num_logical_list;
         std::vector<int> negative_control_qubit_num_logical_list;
@@ -2024,8 +2026,7 @@ namespace qcs
 
         void initialize_sequential()
         {
-            measured_0_qubit_num_logical_list.clear();
-            measured_1_qubit_num_logical_list.clear();
+            discard_measurement_state();
             uint64_t num_blocks_init;
             uint64_t block_size_init;
             if (num_qubits_local >= log_block_size_max)
@@ -2044,8 +2045,7 @@ namespace qcs
 
         void initialize_flat()
         {
-            measured_0_qubit_num_logical_list.clear();
-            measured_1_qubit_num_logical_list.clear();
+            discard_measurement_state();
             uint64_t num_blocks_init;
             uint64_t block_size_init;
             if (num_qubits_local >= log_block_size_max)
@@ -2064,8 +2064,7 @@ namespace qcs
 
         void initialize_zero()
         {
-            measured_0_qubit_num_logical_list.clear();
-            measured_1_qubit_num_logical_list.clear();
+            discard_measurement_state();
             if (proc_num == 0)
             {
                 qcs::complex_t const one = 1;
@@ -2080,8 +2079,7 @@ namespace qcs
 
         void initialize_entangled()
         {
-            measured_0_qubit_num_logical_list.clear();
-            measured_1_qubit_num_logical_list.clear();
+            discard_measurement_state();
             if (proc_num == 0)
             {
                 qcs::complex_t const one = 1;
@@ -2096,6 +2094,7 @@ namespace qcs
 
         void initialize_use_curand()
         {
+            discard_measurement_state();
 
             MPI_Barrier(MPI_COMM_WORLD);
             if (proc_num == 0)
@@ -2120,8 +2119,7 @@ namespace qcs
 
         void initialize_laod_statevector()
         {
-            measured_0_qubit_num_logical_list.clear();
-            measured_1_qubit_num_logical_list.clear();
+            discard_measurement_state();
 
             MPI_Barrier(MPI_COMM_WORLD);
 
@@ -2401,39 +2399,6 @@ namespace qcs
                 auto const tqn_phys = target_qubit_num_physical_list[tqi];
                 target_qubit_num_list_kernel_arg[tqi] = tqn_phys;
 
-                bool is_measured = false;
-                int measured_value = 0;
-
-                std::vector<int> *const measured_X_qubit_num_logical_list_list[] = {
-                    &measured_0_qubit_num_logical_list,
-                    &measured_1_qubit_num_logical_list};
-
-                for (int loop_measured_value = 0; loop_measured_value < 2; loop_measured_value++)
-                {
-                    for (int mXqnl_idx = 0; mXqnl_idx < measured_X_qubit_num_logical_list_list[loop_measured_value]->size(); mXqnl_idx++)
-                    {
-                        auto const mXqn_phys = perm_l2p[measured_X_qubit_num_logical_list_list[loop_measured_value]->operator[](mXqnl_idx)];
-                        if (mXqn_phys == tqn_phys)
-                        {
-                            is_measured = true;
-                            measured_value = loop_measured_value;
-                            break;
-                        }
-                    }
-                    if (is_measured)
-                    {
-                        break;
-                    }
-                }
-
-                if (is_measured)
-                {
-                    qcs_kernel_input_host->is_measured_bits |= UINT64_C(1) << tqi;
-                    if (measured_value /* == 1 */)
-                    {
-                        qcs_kernel_input_host->measured_value_bits |= UINT64_C(1) << tqi;
-                    }
-                }
             }
 
             num_operand_qubits =
@@ -2480,16 +2445,71 @@ namespace qcs
             measured_1_qubit_num_logical_list = measured_1_qubit_num_logical_list_copy;
         }
 
-        void clear_measurement_state()
+        void discard_measurement_state()
         {
+            measured_mask_logical = 0;
+            measured_value_logical = 0;
+            pending_projection_mask_logical = 0;
             measured_0_qubit_num_logical_list.clear();
             measured_1_qubit_num_logical_list.clear();
             measured_0_qubit_num_logical_list_copy.clear();
             measured_1_qubit_num_logical_list_copy.clear();
         }
 
+        void materialize_pending_projection(uint64_t requested_mask)
+        {
+            uint64_t const todo_mask = requested_mask & pending_projection_mask_logical;
+            if (todo_mask == 0)
+                return;
+
+            uint64_t local_mask = 0;
+            uint64_t local_value = 0;
+            uint64_t rank_mask = 0;
+            uint64_t rank_value = 0;
+            for (int logical_q = 0; logical_q < num_qubits; ++logical_q)
+            {
+                uint64_t const logical_bit = UINT64_C(1) << logical_q;
+                if ((todo_mask & logical_bit) == 0)
+                    continue;
+                int const physical_q = perm_l2p[logical_q];
+                uint64_t const value = (measured_value_logical & logical_bit) != 0;
+                if (physical_q < num_qubits_local)
+                {
+                    local_mask |= UINT64_C(1) << physical_q;
+                    local_value |= value << physical_q;
+                }
+                else
+                {
+                    int const rank_q = physical_q - num_qubits_local;
+                    rank_mask |= UINT64_C(1) << rank_q;
+                    rank_value |= value << rank_q;
+                }
+            }
+
+            if ((((uint64_t)proc_num ^ rank_value) & rank_mask) != 0)
+            {
+                ATLC_CHECK_CUDA(cudaMemsetAsync, state_data_device, 0, num_states_local * sizeof(qcs::complex_t), stream);
+            }
+            else if (local_mask != 0)
+            {
+                uint64_t const block_size = std::min<uint64_t>(block_size_max, num_states_local);
+                uint64_t const num_blocks = (num_states_local + block_size - 1) / block_size;
+                ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, qcs::materialize_projection_kernel, num_blocks, block_size, 0, stream,
+                                state_data_device, num_states_local, local_mask, local_value);
+            }
+            pending_projection_mask_logical &= ~todo_mask;
+        }
+
+        void clear_measurement_state()
+        {
+            materialize_pending_projection(pending_projection_mask_logical);
+            discard_measurement_state();
+        }
+
         void save_statevector(char const *const outfn)
         {
+
+            materialize_pending_projection(pending_projection_mask_logical);
 
             MPI_Barrier(MPI_COMM_WORLD);
             // if (proc_num == 0) { fprintf(stderr, "[info] dump statevector\n"); }
@@ -2648,27 +2668,11 @@ namespace qcs
             }
 #endif
 
-            // clear alternative state
-            {
-                uint64_t const log_num_threads = num_qubits_local - 1;
-                uint64_t log_block_size_gateop;
-
-                if (log_block_size_max > log_num_threads)
-                {
-                    log_block_size_gateop = log_num_threads;
-                    num_blocks_gateop = 1;
-                }
-                else
-                {
-                    log_block_size_gateop = log_block_size_max;
-                    num_blocks_gateop = UINT64_C(1) << (log_num_threads - log_block_size_max);
-                }
-
-                block_size_gateop = UINT64_C(1) << log_block_size_gateop;
-
-                auto const measure_qubit_num_physical = perm_l2p[measure_qubit_num_logical];
-                ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, clear_alternative_state, num_blocks_gateop, block_size_gateop, 0, stream, measure_qubit_num_physical, measure_result);
-            }
+            uint64_t const measured_bit = UINT64_C(1) << measure_qubit_num_logical;
+            measured_mask_logical |= measured_bit;
+            measured_value_logical = (measured_value_logical & ~measured_bit) |
+                                     ((uint64_t)measure_result << measure_qubit_num_logical);
+            pending_projection_mask_logical |= measured_bit;
 
             return measure_result;
         }
@@ -2683,11 +2687,18 @@ namespace qcs
             negative_control_qubit_num_logical_list = std::move(negative_control_qubit_num_logical_list_input);
             positive_control_qubit_num_logical_list = std::move(positive_control_qubit_num_logical_list_input);
 
+            uint64_t target_mask = 0;
+            for (int const target : target_qubit_num_logical_list)
+                target_mask |= UINT64_C(1) << target;
+            uint64_t const release_mask = measured_mask_logical & target_mask;
+
             prepare_control_qubit_num_list();
             if (!measured_control_condition)
                 return;
 
             ensure_local_qubits();
+            materialize_pending_projection(release_mask);
+            assert((pending_projection_mask_logical & target_mask) == 0);
             check_control_qubit_num_physical();
             prepare_operating_gate();
 
@@ -2697,6 +2708,9 @@ namespace qcs
             }
 
             update_measured_list();
+            measured_mask_logical &= ~release_mask;
+            measured_value_logical &= measured_mask_logical;
+            pending_projection_mask_logical &= measured_mask_logical;
         }
 
 #if 0
