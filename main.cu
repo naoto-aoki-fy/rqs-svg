@@ -74,7 +74,7 @@ class hadamard_naive { public:
     }
 };
 
-class hadamard_proposed { public:
+class hadamard_global_proposed { public:
     static __device__ __host__ void apply(int const num_split_areas, int const log_num_split_areas, int64_t const thread_num, int64_t const num_qubits, int64_t const target_qubit_num, my_complex_t** const state_data) {
 
         uint64_t const split_mask = (((uint64_t)1)<<((uint64_t)(num_qubits - log_num_split_areas))) - (uint64_t)1;
@@ -83,7 +83,7 @@ class hadamard_proposed { public:
 
         uint64_t const index_global = thread_num & ~local_mask;
         uint64_t const index_local = thread_num & local_mask;
-        uint64_t const target_index = ((thread_num >> target_qubit_num) & 1) << (num_qubits - log_num_split_areas - 1);
+        uint64_t const target_index = ((thread_num >> (target_qubit_num - 1)) & 1) << (num_qubits - log_num_split_areas - 1);
 
         int64_t const index_state_0 =
             (
@@ -93,8 +93,6 @@ class hadamard_proposed { public:
             ) & ~(((uint64_t)1)<<target_qubit_num);
 
         int64_t const index_state_1 = index_state_0 | (((uint64_t)1)<<target_qubit_num);
-
-
 
         int64_t const index_state_0_split_num = index_state_0 >> (num_qubits - log_num_split_areas);
         int64_t const index_state_0_split_address = index_state_0 & split_mask;
@@ -109,8 +107,6 @@ class hadamard_proposed { public:
         state_data[index_state_1_split_num][index_state_1_split_address] = (amp_state_0 - amp_state_1) * INV_SQRT2;
     }
 };
-
-typedef hadamard_naive hadamard;
 
 template<class Gate>
 __global__ void cuda_gate(int const num_split_areas, int const log_num_split_areas, int64_t const split_num, int64_t const num_qubits, int64_t const target_qubit_num) {
@@ -315,10 +311,14 @@ int main(int argc, char** argv) {
                 int const gpu_id = gpu_list[gpu_num]; 
                 ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
 
-                ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, cuda_gate<hadamard>, num_blocks, block_size, 0, stream[gpu_num], num_gpus, log_num_gpus, gpu_num, num_qubits, target_qubit_num);
+                if (target_qubit_num < num_qubits - log_num_gpus) {
+                    ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, cuda_gate<hadamard_naive>, num_blocks, block_size, 0, stream[gpu_num], num_gpus, log_num_gpus, gpu_num, num_qubits, target_qubit_num);
+                } else {
+                    ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, cuda_gate<hadamard_global_proposed>, num_blocks, block_size, 0, stream[gpu_num], num_gpus, log_num_gpus, gpu_num, num_qubits, target_qubit_num);
+                }
             }
 
-            if (target_qubit_num >= num_qubits - log_num_gpus) {
+            if (target_qubit_num >= num_qubits - log_num_gpus && target_qubit_num < target_qubit_num_end - 1) {
                 for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
                     int const gpu_id = gpu_list[gpu_num]; 
                     ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
