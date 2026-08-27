@@ -48,36 +48,65 @@ static bool parse_gpu_list(char const* value, std::vector<int>* gpu_list) {
     return false;
 }
 
-class hadamard_naive { public:
-    static __device__ __host__ void apply(int const num_split_areas, int const log_num_split_areas, int64_t const thread_num, int64_t const num_qubits, int64_t const target_qubit_num, my_complex_t** const state_data) {
+class hadamard_local
+{
+public:
+    static __device__ __host__ void apply(
+        int const num_split_areas,
+        int const log_num_split_areas,
+        int64_t const thread_num,
+        int64_t const num_qubits,
+        int64_t const target_qubit_num,
+        my_complex_t **const state_data)
+    {
+        (void)num_split_areas;
+        uint64_t const num_qubits_local = num_qubits - log_num_split_areas;
+        uint64_t const local_pair_mask = (((uint64_t)1) << (num_qubits_local - 1)) - 1;
+        uint64_t const split_num = ((uint64_t)thread_num) >> (num_qubits_local - 1);
+        uint64_t const local_pair_num = ((uint64_t)thread_num) & local_pair_mask;
+        uint64_t const target_mask = ((uint64_t)1) << target_qubit_num;
+        uint64_t const lower_mask = target_mask - 1;
+        uint64_t const address_0 = (local_pair_num & lower_mask) | ((local_pair_num & ~lower_mask) << 1);
+        uint64_t const address_1 = address_0 | target_mask;
+        my_complex_t *const state = state_data[split_num];
+        my_complex_t const amp_state_0 = state[address_0];
+        my_complex_t const amp_state_1 = state[address_1];
+        state[address_0] = (amp_state_0 + amp_state_1) * INV_SQRT2;
+        state[address_1] = (amp_state_0 - amp_state_1) * INV_SQRT2;
+    }
+};
 
-        uint64_t const lower_mask = (((uint64_t)1)<<target_qubit_num) - (uint64_t)1;
-        uint64_t const split_mask = (((uint64_t)1)<<((uint64_t)(num_qubits - log_num_split_areas))) - (uint64_t)1;
-
-        int64_t const index_state_lower = thread_num & lower_mask;
-        int64_t const index_state_higher = (thread_num & ~lower_mask) << ((int64_t)1);
-
-        int64_t const index_state_0 = index_state_lower | index_state_higher;
-        int64_t const index_state_1 = index_state_0 | (((int64_t)1)<<target_qubit_num);
-
-        int64_t const index_state_0_split_num = index_state_0 >> (num_qubits - log_num_split_areas);
-        int64_t const index_state_0_split_address = index_state_0 & split_mask;
-
-        int64_t const index_state_1_split_num = index_state_1 >> (num_qubits - log_num_split_areas);
-        int64_t const index_state_1_split_address = index_state_1 & split_mask;
-
-        my_complex_t const amp_state_0 = state_data[index_state_0_split_num][index_state_0_split_address];
-        my_complex_t const amp_state_1 = state_data[index_state_1_split_num][index_state_1_split_address];
-
-        state_data[index_state_0_split_num][index_state_0_split_address] = (amp_state_0 + amp_state_1) * INV_SQRT2;
-        state_data[index_state_1_split_num][index_state_1_split_address] = (amp_state_0 - amp_state_1) * INV_SQRT2;
+class hadamard_global_naive
+{
+public:
+    static __device__ __host__ void apply(
+        int const num_split_areas,
+        int const log_num_split_areas,
+        int64_t const thread_num,
+        int64_t const num_qubits,
+        int64_t const target_qubit_num,
+        my_complex_t **const state_data)
+    {
+        (void)num_split_areas;
+        uint64_t const num_qubits_local = num_qubits - log_num_split_areas;
+        uint64_t const split_mask = (((uint64_t)1) << num_qubits_local) - 1;
+        uint64_t const address = ((uint64_t)thread_num) & split_mask;
+        uint64_t const split_pair_num = ((uint64_t)thread_num) >> num_qubits_local;
+        uint64_t const target_split_bit = target_qubit_num - num_qubits_local;
+        uint64_t const target_split_mask = ((uint64_t)1) << target_split_bit;
+        uint64_t const lower_split_mask = target_split_mask - 1;
+        uint64_t const split_0 = (split_pair_num & lower_split_mask) | ((split_pair_num & ~lower_split_mask) << 1);
+        uint64_t const split_1 = split_0 | target_split_mask;
+        my_complex_t const amp_state_0 = state_data[split_0][address];
+        my_complex_t const amp_state_1 = state_data[split_1][address];
+        state_data[split_0][address] = (amp_state_0 + amp_state_1) * INV_SQRT2;
+        state_data[split_1][address] = (amp_state_0 - amp_state_1) * INV_SQRT2;
     }
 };
 
 class hadamard_global_proposed {
 public:
-    static __device__ __host__
-    void apply(int const num_split_areas, int const log_num_split_areas, int64_t const thread_num, int64_t const num_qubits, int64_t const target_qubit_num, my_complex_t** const state_data)
+    static __device__ __host__ void apply(int const num_split_areas, int const log_num_split_areas, int64_t const thread_num, int64_t const num_qubits, int64_t const target_qubit_num, my_complex_t **const state_data)
     {
         int64_t const num_qubits_local = num_qubits - log_num_split_areas;
         uint64_t const num_threads_local = ((uint64_t)1 << (num_qubits_local - 1));
@@ -96,6 +125,8 @@ public:
         state_data[split_1][address] = (amp_state_0 - amp_state_1) * INV_SQRT2;
     }
 };
+
+typedef hadamard_global_proposed hadamard_global;
 
 template<class Gate>
 __global__ void cuda_gate(int const num_split_areas, int const log_num_split_areas, int64_t const split_num, int64_t const num_qubits, int64_t const target_qubit_num) {
@@ -301,9 +332,9 @@ int main(int argc, char** argv) {
                 ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
 
                 if (target_qubit_num < num_qubits - log_num_gpus) {
-                    ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, cuda_gate<hadamard_naive>, num_blocks, block_size, 0, stream[gpu_num], num_gpus, log_num_gpus, gpu_num, num_qubits, target_qubit_num);
+                    ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, cuda_gate<hadamard_local>, num_blocks, block_size, 0, stream[gpu_num], num_gpus, log_num_gpus, gpu_num, num_qubits, target_qubit_num);
                 } else {
-                    ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, cuda_gate<hadamard_global_proposed>, num_blocks, block_size, 0, stream[gpu_num], num_gpus, log_num_gpus, gpu_num, num_qubits, target_qubit_num);
+                    ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, cuda_gate<hadamard_global>, num_blocks, block_size, 0, stream[gpu_num], num_gpus, log_num_gpus, gpu_num, num_qubits, target_qubit_num);
                 }
             }
 
