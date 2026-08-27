@@ -74,37 +74,26 @@ class hadamard_naive { public:
     }
 };
 
-class hadamard_global_proposed { public:
-    static __device__ __host__ void apply(int const num_split_areas, int const log_num_split_areas, int64_t const thread_num, int64_t const num_qubits, int64_t const target_qubit_num, my_complex_t** const state_data) {
-
-        uint64_t const split_mask = (((uint64_t)1)<<((uint64_t)(num_qubits - log_num_split_areas))) - (uint64_t)1;
-
-        uint64_t const local_mask = (((uint64_t)1)<<((uint64_t)(num_qubits - log_num_split_areas - 1))) - (uint64_t)1;
-
-        uint64_t const index_global = thread_num & ~local_mask;
-        uint64_t const index_local = thread_num & local_mask;
-        uint64_t const target_index = ((thread_num >> (target_qubit_num - 1)) & 1) << (num_qubits - log_num_split_areas - 1);
-
-        int64_t const index_state_0 =
-            (
-                (index_global << 1)
-                | target_index
-                | index_local
-            ) & ~(((uint64_t)1)<<target_qubit_num);
-
-        int64_t const index_state_1 = index_state_0 | (((uint64_t)1)<<target_qubit_num);
-
-        int64_t const index_state_0_split_num = index_state_0 >> (num_qubits - log_num_split_areas);
-        int64_t const index_state_0_split_address = index_state_0 & split_mask;
-
-        int64_t const index_state_1_split_num = index_state_1 >> (num_qubits - log_num_split_areas);
-        int64_t const index_state_1_split_address = index_state_1 & split_mask;
-
-        my_complex_t const amp_state_0 = state_data[index_state_0_split_num][index_state_0_split_address];
-        my_complex_t const amp_state_1 = state_data[index_state_1_split_num][index_state_1_split_address];
-
-        state_data[index_state_0_split_num][index_state_0_split_address] = (amp_state_0 + amp_state_1) * INV_SQRT2;
-        state_data[index_state_1_split_num][index_state_1_split_address] = (amp_state_0 - amp_state_1) * INV_SQRT2;
+class hadamard_global_proposed {
+public:
+    static __device__ __host__
+    void apply(int const num_split_areas, int const log_num_split_areas, int64_t const thread_num, int64_t const num_qubits, int64_t const target_qubit_num, my_complex_t** const state_data)
+    {
+        int64_t const num_qubits_local = num_qubits - log_num_split_areas;
+        uint64_t const num_threads_local = ((uint64_t)1 << (num_qubits_local - 1));
+        uint64_t const local_mask = num_threads_local - 1;
+        uint64_t const split_num = thread_num >> (num_qubits_local - 1);
+        uint64_t const local_thread_num = thread_num & local_mask;
+        uint64_t const target_split_bit = target_qubit_num - num_qubits_local;
+        // uint64_t const peer_split_num = split_num ^ (((uint64_t)1) << target_split_bit);
+        uint64_t const address_high_bit = (split_num >> target_split_bit) & 1;
+        uint64_t const address = local_thread_num | (address_high_bit << (num_qubits_local - 1));
+        uint64_t const split_0 = split_num & ~(((uint64_t)1) << target_split_bit);
+        uint64_t const split_1 = split_0 | (((uint64_t)1) << target_split_bit);
+        my_complex_t const amp_state_0 = state_data[split_0][address];
+        my_complex_t const amp_state_1 = state_data[split_1][address];
+        state_data[split_0][address] = (amp_state_0 + amp_state_1) * INV_SQRT2;
+        state_data[split_1][address] = (amp_state_0 - amp_state_1) * INV_SQRT2;
     }
 };
 
