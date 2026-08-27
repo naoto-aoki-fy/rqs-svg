@@ -198,6 +198,8 @@ int main(int argc, char** argv) {
     std::vector<cudaStream_t> stream(num_gpus);
     std::vector<cudaEvent_t> event_1(num_gpus);
     std::vector<cudaEvent_t> event_2(num_gpus);
+    std::vector<cudaEvent_t> done(num_gpus);
+    cudaEvent_t layer_done;
 
     for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
 
@@ -210,15 +212,43 @@ int main(int argc, char** argv) {
 
         ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &event_2[gpu_num], cudaEventDefault);
 
+        ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &done[gpu_num], cudaEventDisableTiming);
+
     }
+    ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[0]);
+    ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &layer_done, cudaEventDisableTiming);
     ATLC_DEFER_CODE({
+        ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[0]);
+        ATLC_CHECK_CUDA(cudaEventDestroy, layer_done);
         for (int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
             ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[gpu_num]);
+            ATLC_CHECK_CUDA(cudaEventDestroy, done[gpu_num]);
             ATLC_CHECK_CUDA(cudaEventDestroy, event_2[gpu_num]);
             ATLC_CHECK_CUDA(cudaEventDestroy, event_1[gpu_num]);
             ATLC_CHECK_CUDA(cudaStreamDestroy, stream[gpu_num]);
         }
     });
+
+    // Join all GPU streams without blocking the host. Events may be waited on
+    // from a stream belonging to another device, so stream 0 can coordinate a
+    // layer and fan the resulting dependency back out to every GPU.
+    auto enqueue_inter_gpu_barrier = [&]() {
+        for (int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[gpu_num]);
+            ATLC_CHECK_CUDA(cudaEventRecord, done[gpu_num], stream[gpu_num]);
+        }
+
+        ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[0]);
+        for (int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+            ATLC_CHECK_CUDA(cudaStreamWaitEvent, stream[0], done[gpu_num], 0);
+        }
+        ATLC_CHECK_CUDA(cudaEventRecord, layer_done, stream[0]);
+
+        for (int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+            ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[gpu_num]);
+            ATLC_CHECK_CUDA(cudaStreamWaitEvent, stream[gpu_num], layer_done, 0);
+        }
+    };
 
     std::vector<my_complex_t**> state_data_device_list_constmem_addr(num_gpus);
     for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
@@ -299,10 +329,9 @@ int main(int argc, char** argv) {
     ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[0]);
     ATLC_CHECK_CUDA(cudaMemcpyAsync, state_data_device_list[0], &zero_state_amplitude,
         sizeof(zero_state_amplitude), cudaMemcpyHostToDevice, stream[0]);
-    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-        ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[gpu_num]);
-        ATLC_CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
-    }
+    enqueue_inter_gpu_barrier();
+    ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[0]);
+    ATLC_CHECK_CUDA(cudaEventSynchronize, layer_done);
 
     fprintf(stderr, "[info] gpu_hadamard\n");
 
@@ -319,11 +348,7 @@ int main(int argc, char** argv) {
             // The first global gate reads state owned by other GPUs.  Wait for
             // every GPU's preceding local gates before allowing those reads.
             if (target_qubit_num == num_qubits - log_num_gpus) {
-                for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-                    int const gpu_id = gpu_list[gpu_num];
-                    ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
-                    ATLC_CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
-                }
+                enqueue_inter_gpu_barrier();
             }
 
             for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
@@ -339,11 +364,7 @@ int main(int argc, char** argv) {
             }
 
             if (target_qubit_num >= num_qubits - log_num_gpus && target_qubit_num < target_qubit_num_end - 1) {
-                for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-                    int const gpu_id = gpu_list[gpu_num]; 
-                    ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
-                    ATLC_CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
-                }
+                enqueue_inter_gpu_barrier();
             }
 
         }
@@ -354,11 +375,9 @@ int main(int argc, char** argv) {
             ATLC_CHECK_CUDA(cudaEventRecord, event_2[gpu_num], stream[gpu_num]);
         }
 
-        for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-            int const gpu_id = gpu_list[gpu_num]; 
-            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
-            ATLC_CHECK_CUDA(cudaStreamSynchronize, stream[gpu_num]);
-        }
+        enqueue_inter_gpu_barrier();
+        ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[0]);
+        ATLC_CHECK_CUDA(cudaEventSynchronize, layer_done);
 
         double elapsed_gpu = 0;
         for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
