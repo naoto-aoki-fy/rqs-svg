@@ -45,11 +45,15 @@ struct gengetopt_args_info
   int num_qubits_arg;	/**< @brief Number of qubits (default='24').  */
   char * num_qubits_orig;	/**< @brief Number of qubits original value given at command line.  */
   const char *num_qubits_help; /**< @brief Number of qubits help description.  */
+  int num_samples_arg;	/**< @brief Number of benchmark samples (default='64').  */
+  char * num_samples_orig;	/**< @brief Number of benchmark samples original value given at command line.  */
+  const char *num_samples_help; /**< @brief Number of benchmark samples help description.  */
   
   unsigned int help_given ;	/**< @brief Whether help was given.  */
   unsigned int version_given ;	/**< @brief Whether version was given.  */
   unsigned int gpus_given ;	/**< @brief Whether gpus was given.  */
   unsigned int num_qubits_given ;	/**< @brief Whether num-qubits was given.  */
+  unsigned int num_samples_given ;	/**< @brief Whether num-samples was given.  */
 
 } ;
 

@@ -34,10 +34,11 @@ const char *gengetopt_args_info_versiontext = "";
 const char *gengetopt_args_info_description = "";
 
 const char *gengetopt_args_info_help[] = {
-  "  -h, --help            Print help and exit",
-  "  -V, --version         Print version and exit",
-  "  -g, --gpus=STRING     Comma-separated GPU IDs  (default=`0,1,2,3,4,5,6,7')",
-  "  -q, --num-qubits=INT  Number of qubits  (default=`24')",
+  "  -h, --help             Print help and exit",
+  "  -V, --version          Print version and exit",
+  "  -g, --gpus=STRING      Comma-separated GPU IDs  (default=`0,1,2,3,4,5,6,7')",
+  "  -q, --num-qubits=INT   Number of qubits  (default=`24')",
+  "  -s, --num-samples=INT  Number of benchmark samples  (default=`64')",
     0
 };
 
@@ -68,6 +69,7 @@ void clear_given (struct gengetopt_args_info *args_info)
   args_info->version_given = 0 ;
   args_info->gpus_given = 0 ;
   args_info->num_qubits_given = 0 ;
+  args_info->num_samples_given = 0 ;
 }
 
 static
@@ -78,6 +80,8 @@ void clear_args (struct gengetopt_args_info *args_info)
   args_info->gpus_orig = NULL;
   args_info->num_qubits_arg = 24;
   args_info->num_qubits_orig = NULL;
+  args_info->num_samples_arg = 64;
+  args_info->num_samples_orig = NULL;
   
 }
 
@@ -90,6 +94,7 @@ void init_args_info(struct gengetopt_args_info *args_info)
   args_info->version_help = gengetopt_args_info_help[1] ;
   args_info->gpus_help = gengetopt_args_info_help[2] ;
   args_info->num_qubits_help = gengetopt_args_info_help[3] ;
+  args_info->num_samples_help = gengetopt_args_info_help[4] ;
   
 }
 
@@ -182,6 +187,7 @@ cmdline_parser_release (struct gengetopt_args_info *args_info)
   free_string_field (&(args_info->gpus_arg));
   free_string_field (&(args_info->gpus_orig));
   free_string_field (&(args_info->num_qubits_orig));
+  free_string_field (&(args_info->num_samples_orig));
   
   
 
@@ -220,6 +226,8 @@ cmdline_parser_dump(FILE *outfile, struct gengetopt_args_info *args_info)
     write_into_file(outfile, "gpus", args_info->gpus_orig, 0);
   if (args_info->num_qubits_given)
     write_into_file(outfile, "num-qubits", args_info->num_qubits_orig, 0);
+  if (args_info->num_samples_given)
+    write_into_file(outfile, "num-samples", args_info->num_samples_orig, 0);
   
 
   i = EXIT_SUCCESS;
@@ -514,10 +522,11 @@ cmdline_parser_internal (
         { "version",	0, NULL, 'V' },
         { "gpus",	1, NULL, 'g' },
         { "num-qubits",	1, NULL, 'q' },
+        { "num-samples",	1, NULL, 's' },
         { 0,  0, 0, 0 }
       };
 
-      c = getopt_long (argc, argv, "hVg:q:", long_options, &option_index);
+      c = getopt_long (argc, argv, "hVg:q:s:", long_options, &option_index);
 
       if (c == -1) break;	/* Exit from `while (1)' loop.  */
 
@@ -556,6 +565,18 @@ cmdline_parser_internal (
               additional_error))
             goto failure;
         
+          break;
+        case 's':	/* Number of benchmark samples.  */
+
+
+          if (update_arg( (void *)&(args_info->num_samples_arg),
+               &(args_info->num_samples_orig), &(args_info->num_samples_given),
+              &(local_args_info.num_samples_given), optarg, 0, "64", ARG_INT,
+              check_ambiguity, override, 0, 0,
+              "num-samples", 's',
+              additional_error))
+            goto failure;
+
           break;
 
         case 0:	/* Long option with no short option */

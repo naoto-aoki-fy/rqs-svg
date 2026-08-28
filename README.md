@@ -25,13 +25,15 @@ The resulting executable is written to `bin/qcs`.
 
 ## Running
 
-By default, the simulator uses GPUs 0 through 7 and simulates 24 qubits. Use
+By default, the simulator uses GPUs 0 through 7, simulates 24 qubits, and runs
+64 benchmark samples. Use
 `-g`/`--gpus` with a comma-separated GPU list and `-q`/`--num-qubits` with
-a qubit count to override these defaults:
+a qubit count to override the GPU and qubit defaults. Use `-s`/`--num-samples`
+to set the number of benchmark samples:
 
 ```sh
-bin/qcs -g 0,1,2,3 -q 30
-# Equivalent: bin/qcs --gpus 0,1,2,3 --num-qubits 30
+bin/qcs -g 0,1,2,3 -q 30 -s 100
+# Equivalent: bin/qcs --gpus 0,1,2,3 --num-qubits 30 --num-samples 100
 ```
 
 The GPU list must contain 1, 2, 4, or 8 entries. Run `bin/qcs -h` to display
