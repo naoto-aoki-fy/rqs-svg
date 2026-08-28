@@ -161,6 +161,13 @@ int main(int argc, char** argv) {
         cmdline_parser_free(&args_info);
         return EXIT_FAILURE;
     }
+    int const num_samples = args_info.num_samples_arg;
+    if (num_samples <= 0) {
+        fprintf(stderr, "[error] --num-samples must be greater than 0: %d\n", num_samples);
+        cmdline_parser_print_help();
+        cmdline_parser_free(&args_info);
+        return EXIT_FAILURE;
+    }
     cmdline_parser_free(&args_info);
 
     if (gpu_list.size() > max_num_gpus || (gpu_list.size() & (gpu_list.size() - 1)) != 0) {
@@ -182,7 +189,7 @@ int main(int argc, char** argv) {
 
     fprintf(stderr, "[info] num_qubits=%d\n", num_qubits);
 
-    int const num_samples = 64;
+    fprintf(stderr, "[info] num_samples=%d\n", num_samples);
     int const log_block_size = 8;
     fprintf(stderr, "[info] log_block_size=%d\n", log_block_size);
     int const target_qubit_num_begin = 0;
