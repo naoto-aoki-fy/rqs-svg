@@ -60,6 +60,39 @@ void apply_hadamard_pair(complex_t* const state, uint64_t const pair,
     }
 }
 
+class hadamard_global_proposed {
+public:
+    static void apply(int const num_split_areas,
+                      int const log_num_split_areas,
+                      int64_t const thread_num, int64_t const num_qubits,
+                      int64_t const target_qubit_num,
+                      complex_t** const state_data) {
+        (void)num_split_areas;
+        int64_t const num_qubits_local = num_qubits - log_num_split_areas;
+        uint64_t const num_threads_local =
+            UINT64_C(1) << (num_qubits_local - 1);
+        uint64_t const local_mask = num_threads_local - 1;
+        uint64_t const split_num =
+            static_cast<uint64_t>(thread_num) >> (num_qubits_local - 1);
+        uint64_t const local_thread_num =
+            static_cast<uint64_t>(thread_num) & local_mask;
+        uint64_t const target_split_bit =
+            static_cast<uint64_t>(target_qubit_num - num_qubits_local);
+        uint64_t const target_split_mask = UINT64_C(1) << target_split_bit;
+        uint64_t const address_high_bit =
+            (split_num >> target_split_bit) & UINT64_C(1);
+        uint64_t const address =
+            local_thread_num |
+            (address_high_bit << (num_qubits_local - 1));
+        uint64_t const split_0 = split_num & ~target_split_mask;
+        uint64_t const split_1 = split_0 | target_split_mask;
+        complex_t const a = state_data[split_0][address];
+        complex_t const b = state_data[split_1][address];
+        state_data[split_0][address] = scale(add(a, b), INV_SQRT2);
+        state_data[split_1][address] = scale(subtract(a, b), INV_SQRT2);
+    }
+};
+
 }  // namespace
 
 #ifndef QCS_TESTING
