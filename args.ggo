@@ -1,0 +1,7 @@
+package "qcs"
+version "1.0"
+purpose "Run the OpenMP CPU quantum circuit simulator."
+
+option "threads" t "Number of OpenMP threads (0 uses the runtime default)" int default="0"
+option "num-qubits" q "Number of qubits" int default="24"
+option "num-samples" s "Number of benchmark samples" int optional default="64"
