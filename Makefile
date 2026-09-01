@@ -1,21 +1,30 @@
 -include config.mk
 
-NVCC ?= nvcc --forward-unknown-to-host-compiler
-NVCC_CFLAGS = $(CFLAGS_VENDOR) -Wformat=2 -O3 -std=c++17 -Xcompiler -fopenmp -Wno-deprecated-gpu-targets $(GENCODE_FLAGS)
-NVCC_LDFLAGS = $(LDFLAGS_VENDOR) $(LDLIBS) --cudart=shared
+CXX ?= g++
+CXXFLAGS = $(CFLAGS_VENDOR) -O3 -std=c++17 -Wall -Wextra -Wformat=2 -fopenmp
+LDFLAGS += $(LDFLAGS_VENDOR)
+LDLIBS += -fopenmp
 QCS_BIN ?= bin/qcs
+TEST_BIN ?= bin/test_hadamard
 GENGETOPT ?= gengetopt
 
-.PHONY: target
+.PHONY: target test
 target: $(QCS_BIN)
 
 cmdline.c cmdline.h &: args.ggo
 	$(GENGETOPT) --input=$< --file-name=cmdline --output-dir=.
 
-$(QCS_BIN): main.cu cmdline.c cmdline.h
+$(QCS_BIN): main.cpp cmdline.c cmdline.h
 	mkdir -p $(dir $@)
-	$(NVCC) $(NVCC_CFLAGS) main.cu cmdline.c $(NVCC_LDFLAGS) -o $@
+	$(CXX) $(CXXFLAGS) main.cpp cmdline.c $(LDFLAGS) $(LDLIBS) -o $@
+
+$(TEST_BIN): tests/test_hadamard.cpp main.cpp cmdline.h
+	mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) tests/test_hadamard.cpp $(LDFLAGS) $(LDLIBS) -o $@
+
+test: $(TEST_BIN)
+	$(TEST_BIN)
 
 .PHONY: clean
 clean:
-	$(RM) $(QCS_BIN)
+	$(RM) $(QCS_BIN) $(TEST_BIN)

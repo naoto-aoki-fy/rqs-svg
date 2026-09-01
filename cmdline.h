@@ -39,21 +39,21 @@ struct gengetopt_args_info
 {
   const char *help_help; /**< @brief Print help and exit help description.  */
   const char *version_help; /**< @brief Print version and exit help description.  */
-  char * gpus_arg;	/**< @brief Comma-separated GPU IDs (default='0,1,2,3,4,5,6,7').  */
-  char * gpus_orig;	/**< @brief Comma-separated GPU IDs original value given at command line.  */
-  const char *gpus_help; /**< @brief Comma-separated GPU IDs help description.  */
   int num_qubits_arg;	/**< @brief Number of qubits (default='24').  */
   char * num_qubits_orig;	/**< @brief Number of qubits original value given at command line.  */
   const char *num_qubits_help; /**< @brief Number of qubits help description.  */
   int num_samples_arg;	/**< @brief Number of benchmark samples (default='64').  */
   char * num_samples_orig;	/**< @brief Number of benchmark samples original value given at command line.  */
   const char *num_samples_help; /**< @brief Number of benchmark samples help description.  */
-  
+  int threads_arg;	/**< @brief OpenMP threads (0 uses the runtime default) (default='0').  */
+  char * threads_orig;	/**< @brief OpenMP threads (0 uses the runtime default) original value given at command line.  */
+  const char *threads_help; /**< @brief OpenMP threads (0 uses the runtime default) help description.  */
+
   unsigned int help_given ;	/**< @brief Whether help was given.  */
   unsigned int version_given ;	/**< @brief Whether version was given.  */
-  unsigned int gpus_given ;	/**< @brief Whether gpus was given.  */
   unsigned int num_qubits_given ;	/**< @brief Whether num-qubits was given.  */
   unsigned int num_samples_given ;	/**< @brief Whether num-samples was given.  */
+  unsigned int threads_given ;	/**< @brief Whether threads was given.  */
 
 } ;
 
@@ -142,7 +142,7 @@ void cmdline_parser_print_help(void);
 void cmdline_parser_print_version(void);
 
 /**
- * Initializes all the fields a cmdline_parser_params structure 
+ * Initializes all the fields a cmdline_parser_params structure
  * to their default values
  * @param params the structure to initialize
  */
