@@ -1,24 +1,17 @@
 # RQS-SVG
 
-The RQS-SVG is a GPU-accelerated testbed for quantum circuit simulation. The code provides a `simulator` API (see `qcs.h`) implementing common gate operations, state preparation, and measurement using CUDA, MPI, and NCCL. The Makefile builds a standalone `bin/qcs` executable and can also build `lib/libqcs.so` for programs that link against RQS-SVG directly.
+RQS-SVG is a distributed, CPU-based testbed for quantum circuit simulation. The code provides a `simulator` API (see `qcs.h`) implementing common gate operations, state preparation, and measurement using C++17 and MPI. The Makefile builds a standalone `bin/qcs` executable and can also build `lib/libqcs.so` for programs that link against RQS-SVG directly.
 
 ## Building Simulator
 
-The project requires NVIDIA's CUDA toolkit as well as NCCL and MPI.
+The project requires a C++17 MPI implementation, such as Open MPI or MPICH. It does not require a CUDA toolkit, GPU, NCCL, or `atlc`.
 
-Before building, set up the
-[`atlc`](https://github.com/naoto-aoki-fy/atlc)
-repository, which is required during the build process.
-
-Define `CFLAGS_VENDOR`, `LDFLAGS_VENDOR`, and `GENCODE_FLAGS` in `config.mk`, which is automatically included by the Makefile:
+Optional compiler and linker flags can be defined in `config.mk`, which is automatically included by the Makefile:
 
 ```make
 CFLAGS_VENDOR = -I/foo/bar
 LDFLAGS_VENDOR = -L/foo/bar -lfoobar
-GENCODE_FLAGS = -gencode=arch=compute_xx,code=sm_xx
 ```
-
-These options can be obtained using the [`nvccoptions`](https://github.com/naoto-aoki-fy/nvccoptions) utility.
 
 Then, `make` will build `bin/qcs`.
 
@@ -69,7 +62,7 @@ Build the shared library and then compile the C example:
 make sharedlibrary
 source ./env.bash
 gcc examples/sharedlibrary/ghz_from_c.c -lqcs -o ghz_from_c
-mpirun -np (NUM_GPUS) ./ghz_from_c
+mpirun -np 2 ./ghz_from_c
 ```
 
 Code examples for linking against `libqcs.so` live under
@@ -85,11 +78,13 @@ You can execute the built simulator via:
 ```sh
 source ./env.bash
 
-mpirun -np (NUM_GPUS) ./bin/qcs [--num-samples NUM_SAMPLES|-s NUM_SAMPLES] user_circuit.so
+mpirun -np 2 ./bin/qcs [--num-samples NUM_SAMPLES|-s NUM_SAMPLES] user_circuit.so
 
 # Save the final statevector to a binary file
-mpirun -np (NUM_GPUS) ./bin/qcs --output-statevector data.bin user_circuit.so
+mpirun -np 2 ./bin/qcs --output-statevector data.bin user_circuit.so
 ```
+
+The number of MPI ranks must be a power of two and cannot exceed the state-vector dimension.
 
 ## Acknowledgments
 

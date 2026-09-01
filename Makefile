@@ -1,30 +1,26 @@
 -include config.mk
-LDLIBS ?= -lcurand -lnccl -ldl
-NVCC ?= nvcc --forward-unknown-to-host-compiler
+CXX = mpicxx
 INCLUDE ?= -I./include
-NVCC_CFLAGS = $(CFLAGS_VENDOR) -Wformat=2 $(INCLUDE) -O3 -rdynamic -std=c++17 -Wno-deprecated-gpu-targets $(GENCODE_FLAGS)
-NVCC_LDFLAGS = $(LDFLAGS_VENDOR) -L./lib $(LDLIBS) --cudart=shared
+CXXFLAGS ?= $(CFLAGS_VENDOR) -Wformat=2 $(INCLUDE) -O3 -rdynamic -std=c++17
+LDFLAGS ?= $(LDFLAGS_VENDOR) -L./lib
+LDLIBS ?= -ldl
 QCS_BIN ?= bin/qcs
 LIBQCS_SO ?= lib/libqcs.so
 
-.PHONY: target
+.PHONY: target sharedlibrary clean gengetopt
 target: $(QCS_BIN)
-
-.PHONY: sharedlibrary
 sharedlibrary: $(LIBQCS_SO)
 
 $(QCS_BIN): src/qcs_main.cpp src/qcs_args.c src/qcs_args.h include/qcs.h $(LIBQCS_SO)
 	mkdir -p $(dir $@)
-	$(NVCC) $(NVCC_CFLAGS) src/qcs_main.cpp src/qcs_args.c -lqcs $(NVCC_LDFLAGS) -Wl,-rpath,$(shell realpath $(dir $(LIBQCS_SO))) -o $@
+	$(CXX) $(CXXFLAGS) src/qcs_main.cpp src/qcs_args.c -lqcs $(LDFLAGS) $(LDLIBS) -Wl,-rpath,$(shell realpath $(dir $(LIBQCS_SO))) -o $@
 
-$(LIBQCS_SO): src/qcs.cu include/qcs.h
+$(LIBQCS_SO): src/qcs.cpp include/qcs.h
 	mkdir -p $(dir $@)
-	$(NVCC) $(NVCC_CFLAGS) -fPIC $(NVCC_LDFLAGS) -shared src/qcs.cu -o $@
+	$(CXX) $(CXXFLAGS) -fPIC -shared src/qcs.cpp $(LDLIBS) -o $@
 
-.PHONY: gengetopt
 gengetopt: src/qcs_args.ggo
 	gengetopt --input=$< --unamed-opts --file-name=qcs_args --output-dir=src
 
-.PHONY: clean
 clean:
 	$(RM) $(QCS_BIN) $(LIBQCS_SO)

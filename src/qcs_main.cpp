@@ -8,11 +8,24 @@
 #include <sstream>
 #include <vector>
 #include <memory>
-
-#include <atlc/format.hpp>
+#include <cstdarg>
 
 #include <qcs.h>
 #include "qcs_args.h"
+
+static std::string format(char const *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    va_list copy;
+    va_copy(copy, args);
+    int const size = std::vsnprintf(nullptr, 0, fmt, copy);
+    va_end(copy);
+    std::string result(static_cast<size_t>(size), '\0');
+    std::vsnprintf(result.data(), result.size() + 1, fmt, args);
+    va_end(args);
+    return result;
+}
 
 static std::vector<bit_num_t> parse_mapping_csv(std::string const &mapping_text)
 {
@@ -40,7 +53,7 @@ static std::vector<bit_num_t> invert_mapping(std::vector<bit_num_t> const &perm_
 {
     if ((int)perm_p2l.size() != num_qubits)
     {
-        throw std::runtime_error(atlc::format("mapping size %d does not match num_qubits %d", (int)perm_p2l.size(), num_qubits));
+        throw std::runtime_error(format("mapping size %d does not match num_qubits %d", (int)perm_p2l.size(), num_qubits));
     }
 
     std::vector<bit_num_t> perm_l2p(num_qubits, -1);
@@ -49,11 +62,11 @@ static std::vector<bit_num_t> invert_mapping(std::vector<bit_num_t> const &perm_
         int const logical_qubit_num = perm_p2l[physical_qubit_num];
         if (logical_qubit_num < 0 || logical_qubit_num >= num_qubits)
         {
-            throw std::runtime_error(atlc::format("mapping value %d is out of range [0, %d)", logical_qubit_num, num_qubits));
+            throw std::runtime_error(format("mapping value %d is out of range [0, %d)", logical_qubit_num, num_qubits));
         }
         if (perm_l2p[logical_qubit_num] != -1)
         {
-            throw std::runtime_error(atlc::format("mapping value %d appears multiple times", logical_qubit_num));
+            throw std::runtime_error(format("mapping value %d appears multiple times", logical_qubit_num));
         }
         perm_l2p[logical_qubit_num] = physical_qubit_num;
     }

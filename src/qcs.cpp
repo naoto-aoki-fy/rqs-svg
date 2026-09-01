@@ -22,27 +22,49 @@
 #include <unordered_set>
 #include <tuple>
 #include <type_traits>
+#include <cassert>
 
 #include <mpi.h>
-#include <cuda_runtime.h>
-#include <curand.h>
-#include <cuda/std/complex>
-#include <cuda/std/array>
-#include <cub/cub.cuh>
-#include <thrust/iterator/counting_iterator.h>
-#include <thrust/iterator/transform_iterator.h>
-#include <nccl.h>
-
-#include <atlc/format.hpp>
-#include <atlc/log2_int.hpp>
-#include <atlc/mpi.hpp>
-#include <atlc/cuda.hpp>
-#include <atlc/check_mpi.hpp>
-#include <atlc/check_cuda.hpp>
-#include <atlc/check_curand.hpp>
-#include <atlc/check_nccl.hpp>
+#include <complex>
+#include <array>
+#include <vector>
+#include <memory>
 
 #include <qcs.h>
+
+namespace utility {
+template <typename... Args> std::string format(char const *fmt, Args... args) {
+    int n = std::snprintf(nullptr, 0, fmt, args...);
+    std::string result(static_cast<size_t>(n), '\0');
+    std::snprintf(result.data(), result.size() + 1, fmt, args...);
+    return result;
+}
+template <typename T> int log2_int(T value) {
+    if (value <= 0) throw std::runtime_error("log2 of non-positive value");
+    int result = 0;
+    while (value >>= 1) ++result;
+    return result;
+}
+}
+
+#define ATLC_CHECK_MPI(function, ...) do { \
+    int const mpi_error = function(__VA_ARGS__); \
+    if (mpi_error != MPI_SUCCESS) throw std::runtime_error("MPI operation failed"); \
+} while (0)
+
+struct cpu_dim { uint64_t x = 1; };
+static thread_local cpu_dim blockIdx, threadIdx, blockDim, gridDim;
+
+namespace utility {
+template <typename Kernel, typename... Args>
+void cpu_launch(Kernel kernel, uint64_t blocks, uint64_t threads, Args... args) {
+    gridDim.x = blocks;
+    blockDim.x = threads;
+    for (blockIdx.x = 0; blockIdx.x < blocks; ++blockIdx.x)
+        for (threadIdx.x = 0; threadIdx.x < threads; ++threadIdx.x)
+            kernel(args...);
+}
+}
 
 namespace qcs
 {
@@ -50,32 +72,32 @@ namespace qcs
     struct simulator_core;
 
     typedef double float_t;
-    typedef cuda::std::complex<qcs::float_t> complex_t;
-    typedef cuda::std::array<qcs::float_t, 2> float2_t;
+    typedef std::complex<qcs::float_t> complex_t;
+    typedef std::array<qcs::float_t, 2> float2_t;
 
-    __device__ __host__ complex_t multiply_i(complex_t input)
+      complex_t multiply_i(complex_t input)
     {
         return complex_t(-input.imag(), input.real());
     }
 
-    __device__ __host__ complex_t multiply_i_m(complex_t input)
+      complex_t multiply_i_m(complex_t input)
     {
         return complex_t(input.imag(), -input.real());
     }
 
-    __device__ __host__ complex_t multiply_i_real(complex_t input, float_t multiplier)
+      complex_t multiply_i_real(complex_t input, float_t multiplier)
     {
         return complex_t(-multiplier * input.imag(), +multiplier * input.real());
     }
 
-    __global__ void initstate_sequential_kernel(qcs::complex_t *const data_global, int proc_num)
+     void initstate_sequential_kernel(qcs::complex_t *const data_global, int proc_num)
     {
         uint64_t const num_threads = (uint64_t)gridDim.x * (uint64_t)blockDim.x;
         uint64_t const idx = (uint64_t)blockDim.x * (uint64_t)blockIdx.x + (uint64_t)threadIdx.x;
         data_global[idx] = idx + num_threads * proc_num;
     }
 
-    __global__ void initstate_flat_kernel(qcs::complex_t *const data_global)
+     void initstate_flat_kernel(qcs::complex_t *const data_global)
     {
         uint64_t const idx = (uint64_t)blockDim.x * (uint64_t)blockIdx.x + (uint64_t)threadIdx.x;
         data_global[idx] = 1;
@@ -87,9 +109,9 @@ namespace qcs
         qcs::complex_t *state_data_device;
     };
 
-    __constant__ qcs::complex_t zero_constant;
+     qcs::complex_t zero_constant;
 
-    __constant__ qcs::kernel_common_struct kernel_common_constant;
+     qcs::kernel_common_struct kernel_common_constant;
 
     struct kernel_input_qnlist_struct
     {
@@ -100,7 +122,7 @@ namespace qcs
         uint64_t measured_value_bits;
         int qubit_num_list[1];
 
-        static constexpr __host__ __device__ uint64_t needed_size(
+        static constexpr   uint64_t needed_size(
             int const num_target_qubits,
             int const num_negative_control_qubits,
             int const num_positive_control_qubits)
@@ -108,42 +130,42 @@ namespace qcs
             return sizeof(qcs::kernel_input_qnlist_struct) - sizeof(qubit_num_list) + sizeof(int) * (2 * num_positive_control_qubits + num_negative_control_qubits + 2 * num_target_qubits);
         }
 
-        __host__ __device__ uint64_t byte_size() const
+          uint64_t byte_size() const
         {
             return needed_size(this->num_target_qubits, this->num_negative_control_qubits, this->num_positive_control_qubits);
         }
 
-        __host__ __device__ int get_num_operand_qubits() const
+          int get_num_operand_qubits() const
         {
             return this->num_positive_control_qubits + this->num_negative_control_qubits + this->num_target_qubits;
         }
 
-        __host__ __device__ int const *get_operand_qubit_num_list_sorted() const
+          int const *get_operand_qubit_num_list_sorted() const
         {
             return this->qubit_num_list;
         }
 
-        __host__ __device__ int *get_operand_qubit_num_list_sorted()
+          int *get_operand_qubit_num_list_sorted()
         {
             return this->qubit_num_list;
         }
 
-        __host__ __device__ int const *get_positive_control_qubit_num_list() const
+          int const *get_positive_control_qubit_num_list() const
         {
             return this->qubit_num_list + this->get_num_operand_qubits();
         }
 
-        __host__ __device__ int *get_positive_control_qubit_num_list()
+          int *get_positive_control_qubit_num_list()
         {
             return this->qubit_num_list + this->get_num_operand_qubits();
         }
 
-        __host__ __device__ int const *get_target_qubit_num_list() const
+          int const *get_target_qubit_num_list() const
         {
             return this->qubit_num_list + 2 * this->num_positive_control_qubits + this->num_negative_control_qubits + this->num_target_qubits;
         }
 
-        __host__ __device__ int *get_target_qubit_num_list()
+          int *get_target_qubit_num_list()
         {
             return this->qubit_num_list + 2 * this->num_positive_control_qubits + this->num_negative_control_qubits + this->num_target_qubits;
         }
@@ -151,9 +173,9 @@ namespace qcs
 
     constexpr int max_num_qubits_local = 34;
     constexpr uint64_t kernel_input_max_size = qcs::kernel_input_qnlist_struct::needed_size(qcs::max_num_qubits_local, 0, 0);
-    __constant__ unsigned char kernel_input_constant[qcs::kernel_input_max_size];
+     unsigned char kernel_input_constant[qcs::kernel_input_max_size];
 
-    static __device__ void thread_num_to_state_index_q0(uint64_t thread_num, uint64_t &index_state)
+    static  void thread_num_to_state_index_q0(uint64_t thread_num, uint64_t &index_state)
     {
         auto args = (qcs::kernel_input_qnlist_struct const *)(void *)qcs::kernel_input_constant;
 
@@ -184,7 +206,7 @@ namespace qcs
 
     } /* thread_num_to_state_index_q0 */
 
-    static __device__ void thread_num_to_state_index_q1(uint64_t thread_num, uint64_t &index_state_0, uint64_t &index_state_1, int &is_measured_bits, int &measured_value_bits)
+    static  void thread_num_to_state_index_q1(uint64_t thread_num, uint64_t &index_state_0, uint64_t &index_state_1, int &is_measured_bits, int &measured_value_bits)
     {
         auto args = (qcs::kernel_input_qnlist_struct const *)(void *)qcs::kernel_input_constant;
 
@@ -223,7 +245,7 @@ namespace qcs
 
     } /* thread_num_to_state_index_q1 */
 
-    static __device__ void thread_num_to_state_index_q2(uint64_t thread_num, uint64_t &index_state_00, uint64_t &index_state_01, uint64_t &index_state_10, uint64_t &index_state_11, int &is_measured_bits, int &measured_value_bits)
+    static  void thread_num_to_state_index_q2(uint64_t thread_num, uint64_t &index_state_00, uint64_t &index_state_01, uint64_t &index_state_10, uint64_t &index_state_11, int &is_measured_bits, int &measured_value_bits)
     {
         auto args = (qcs::kernel_input_qnlist_struct const *)(void *)qcs::kernel_input_constant;
 
@@ -263,7 +285,7 @@ namespace qcs
 
     } /* thread_num_to_state_index_q2 */
 
-    static __device__ void thread_num_to_state_index_q3(
+    static  void thread_num_to_state_index_q3(
         uint64_t thread_num,
         uint64_t &index_state_000, uint64_t &index_state_001, uint64_t &index_state_010, uint64_t &index_state_011,
         uint64_t &index_state_100, uint64_t &index_state_101, uint64_t &index_state_110, uint64_t &index_state_111,
@@ -313,7 +335,7 @@ namespace qcs
 
     } /* thread_num_to_state_index_q3 */
 
-    static __device__ void thread_num_to_state_index_q4(
+    static  void thread_num_to_state_index_q4(
         uint64_t thread_num,
         uint64_t &index_state_0000, uint64_t &index_state_0001, uint64_t &index_state_0010, uint64_t &index_state_0011,
         uint64_t &index_state_0100, uint64_t &index_state_0101, uint64_t &index_state_0110, uint64_t &index_state_0111,
@@ -395,7 +417,7 @@ namespace qcs
                 exp_i_lambda = qcs::complex_t(cos(lambda), sin(lambda));
                 exp_i_gamma = qcs::complex_t(cos(gamma), sin(gamma));
             }
-            __device__ void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
+             void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
             {
                 qcs::complex_t const s0_in_copy = s0_in;
                 qcs::complex_t const s1_in_copy = s1_in;
@@ -422,7 +444,7 @@ namespace qcs
                 qcs::float_t const phi_plus_lambda = phi + lambda;
                 exp_i_phi_plus_lambda = qcs::complex_t(cos(phi_plus_lambda), sin(phi_plus_lambda));
             }
-            __device__ void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
+             void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
             {
                 qcs::complex_t const s0_in_copy = s0_in;
                 qcs::complex_t const s1_in_copy = s1_in;
@@ -444,7 +466,7 @@ namespace qcs
                 qcs::float_t const phi_plus_lambda = phi + lambda;
                 exp_i_phi_plus_lambda = qcs::complex_t(cos(phi_plus_lambda), sin(phi_plus_lambda));
             }
-            __device__ void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
+             void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
             {
                 qcs::complex_t const s0_in_copy = s0_in;
                 qcs::complex_t const s1_in_copy = s1_in;
@@ -461,7 +483,7 @@ namespace qcs
             {
                 exp_i_lambda = qcs::complex_t(cos(lambda), sin(lambda));
             }
-            __device__ void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
+             void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
             {
                 s0_out = s0_in;
                 s1_out = exp_i_lambda * s1_in;
@@ -480,7 +502,7 @@ namespace qcs
                 exp_i_theta.real(cos(theta));
                 exp_i_theta.imag(sin(theta));
             }
-            __device__ void apply(qcs::complex_t const &s_in, qcs::complex_t &s_out) const
+             void apply(qcs::complex_t const &s_in, qcs::complex_t &s_out) const
             {
                 s_out = exp_i_theta * s_in;
             }
@@ -489,7 +511,7 @@ namespace qcs
         struct hadamard
         {
             static constexpr unsigned int num_target_qubits = 1;
-            __device__ void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
+             void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
             {
                 auto const s0_in_copy = s0_in;
                 auto const s1_in_copy = s1_in;
@@ -501,7 +523,7 @@ namespace qcs
         struct identity
         {
             static constexpr unsigned int num_target_qubits = 0;
-            __device__ void apply() const
+             void apply() const
             {
             }
         };
@@ -509,7 +531,7 @@ namespace qcs
         struct x
         {
             static constexpr unsigned int num_target_qubits = 1;
-            __device__ void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
+             void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
             {
                 auto const s0_in_copy = s0_in;
                 auto const s1_in_copy = s1_in;
@@ -521,7 +543,7 @@ namespace qcs
         struct y
         {
             static constexpr unsigned int num_target_qubits = 1;
-            __device__ void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
+             void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
             {
                 auto const s0_in_copy = s0_in;
                 auto const s1_in_copy = s1_in;
@@ -535,7 +557,7 @@ namespace qcs
         struct z
         {
             static constexpr unsigned int num_target_qubits = 1;
-            __device__ void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
+             void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
             {
                 // auto const s0_in_copy = s0_in;
                 auto const s1_in_copy = s1_in;
@@ -547,7 +569,7 @@ namespace qcs
         struct s
         {
             static constexpr unsigned int num_target_qubits = 1;
-            __device__ void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
+             void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
             {
                 auto const s1_in_copy = s1_in;
                 s1_out.real(-s1_in_copy.imag());
@@ -558,7 +580,7 @@ namespace qcs
         struct sdg
         {
             static constexpr unsigned int num_target_qubits = 1;
-            __device__ void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
+             void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
             {
                 auto const s1_in_copy = s1_in;
                 s1_out.real(s1_in_copy.imag());
@@ -569,7 +591,7 @@ namespace qcs
         struct t
         {
             static constexpr unsigned int num_target_qubits = 1;
-            __device__ void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
+             void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
             {
                 auto const s1_in_copy = s1_in;
                 s1_out = qcs::complex_t(M_SQRT1_2, M_SQRT1_2) * s1_in_copy;
@@ -579,7 +601,7 @@ namespace qcs
         struct tdg
         {
             static constexpr unsigned int num_target_qubits = 1;
-            __device__ void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
+             void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
             {
                 auto const s1_in_copy = s1_in;
                 s1_out = qcs::complex_t(M_SQRT1_2, -M_SQRT1_2) * s1_in_copy;
@@ -589,7 +611,7 @@ namespace qcs
         struct sx
         {
             static constexpr unsigned int num_target_qubits = 1;
-            __device__ void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
+             void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
             {
                 // auto const s0_in_copy = s0_in;
                 // auto const s1_in_copy = s1_in;
@@ -607,7 +629,7 @@ namespace qcs
         {
             static constexpr unsigned int num_target_qubits = 1;
 
-            __device__ void apply(qcs::complex_t const &s0_in,
+             void apply(qcs::complex_t const &s0_in,
                                   qcs::complex_t const &s1_in,
                                   qcs::complex_t &s0_out,
                                   qcs::complex_t &s1_out) const
@@ -629,7 +651,7 @@ namespace qcs
                 cos_theta_2 = cos(0.5 * theta);
                 sin_theta_2 = sin(0.5 * theta);
             }
-            __device__ void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
+             void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
             {
                 auto const s0_in_copy = s0_in;
                 auto const s1_in_copy = s1_in;
@@ -648,7 +670,7 @@ namespace qcs
                 cos_theta_2 = cos(0.5 * theta);
                 sin_theta_2 = sin(0.5 * theta);
             }
-            __device__ void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
+             void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
             {
                 auto const s0_in_copy = s0_in;
                 auto const s1_in_copy = s1_in;
@@ -667,7 +689,7 @@ namespace qcs
                 cos_theta_2 = cos(0.5 * theta);
                 sin_theta_2 = sin(0.5 * theta);
             }
-            __device__ void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
+             void apply(qcs::complex_t const &s0_in, qcs::complex_t const &s1_in, qcs::complex_t &s0_out, qcs::complex_t &s1_out) const
             {
                 s0_out = qcs::complex_t(cos_theta_2, -sin_theta_2) * s0_in;
                 s1_out = qcs::complex_t(cos_theta_2, sin_theta_2) * s1_in;
@@ -677,7 +699,7 @@ namespace qcs
         struct swap
         {
             static constexpr unsigned int num_target_qubits = 2;
-            __device__ void apply(qcs::complex_t const &s00_in, qcs::complex_t const &s01_in, qcs::complex_t const &s10_in, qcs::complex_t const &s11_in, qcs::complex_t &s00_out, qcs::complex_t &s01_out, qcs::complex_t &s10_out, qcs::complex_t &s11_out) const
+             void apply(qcs::complex_t const &s00_in, qcs::complex_t const &s01_in, qcs::complex_t const &s10_in, qcs::complex_t const &s11_in, qcs::complex_t &s00_out, qcs::complex_t &s01_out, qcs::complex_t &s10_out, qcs::complex_t &s11_out) const
             {
                 auto const s01_in_copy = s01_in;
                 auto const s10_in_copy = s10_in;
@@ -691,7 +713,7 @@ namespace qcs
         struct iswap
         {
             static constexpr unsigned int num_target_qubits = 2;
-            __device__ void apply(qcs::complex_t const &s00_in, qcs::complex_t const &s01_in, qcs::complex_t const &s10_in, qcs::complex_t const &s11_in, qcs::complex_t &s00_out, qcs::complex_t &s01_out, qcs::complex_t &s10_out, qcs::complex_t &s11_out) const
+             void apply(qcs::complex_t const &s00_in, qcs::complex_t const &s01_in, qcs::complex_t const &s10_in, qcs::complex_t const &s11_in, qcs::complex_t &s00_out, qcs::complex_t &s01_out, qcs::complex_t &s10_out, qcs::complex_t &s11_out) const
             {
                 auto const s01_in_copy = s01_in;
                 auto const s10_in_copy = s10_in;
@@ -708,7 +730,7 @@ namespace qcs
         {
             static constexpr unsigned int num_target_qubits = 1;
 
-            __device__ void apply(qcs::complex_t const &s0_in,
+             void apply(qcs::complex_t const &s0_in,
                                   qcs::complex_t const &s1_in,
                                   qcs::complex_t &s0_out,
                                   qcs::complex_t &s1_out) const
@@ -738,7 +760,7 @@ namespace qcs
                 exp_minus_i_phi = qcs::complex_t(cos_phi, -sin_phi);
             }
 
-            __device__ void apply(qcs::complex_t const &s0_in,
+             void apply(qcs::complex_t const &s0_in,
                                   qcs::complex_t const &s1_in,
                                   qcs::complex_t &s0_out,
                                   qcs::complex_t &s1_out) const
@@ -764,7 +786,7 @@ namespace qcs
                 phase_plus = qcs::complex_t(cos(theta_2), sin(theta_2));
             }
 
-            __device__ void apply(qcs::complex_t const &s00_in,
+             void apply(qcs::complex_t const &s00_in,
                                   qcs::complex_t const &s01_in,
                                   qcs::complex_t const &s10_in,
                                   qcs::complex_t const &s11_in,
@@ -794,7 +816,7 @@ namespace qcs
                 m_sin_theta_2 = -sin(theta_2);
             }
 
-            __device__ void apply(qcs::complex_t const &s00_in,
+             void apply(qcs::complex_t const &s00_in,
                                   qcs::complex_t const &s01_in,
                                   qcs::complex_t const &s10_in,
                                   qcs::complex_t const &s11_in,
@@ -829,7 +851,7 @@ namespace qcs
                 sin_theta_2 = sin(theta_2);
             }
 
-            __device__ void apply(qcs::complex_t const &s00_in,
+             void apply(qcs::complex_t const &s00_in,
                                   qcs::complex_t const &s01_in,
                                   qcs::complex_t const &s10_in,
                                   qcs::complex_t const &s11_in,
@@ -864,7 +886,7 @@ namespace qcs
                 sin_theta_2 = sin(theta_2);
             }
 
-            __device__ void apply(qcs::complex_t const &s00_in,
+             void apply(qcs::complex_t const &s00_in,
                                   qcs::complex_t const &s01_in,
                                   qcs::complex_t const &s10_in,
                                   qcs::complex_t const &s11_in,
@@ -903,7 +925,7 @@ namespace qcs
                 exp_minus_i_beta = qcs::complex_t(cos(beta), -sin(beta));
             }
 
-            __device__ void apply(qcs::complex_t const &s00_in,
+             void apply(qcs::complex_t const &s00_in,
                                   qcs::complex_t const &s01_in,
                                   qcs::complex_t const &s10_in,
                                   qcs::complex_t const &s11_in,
@@ -940,7 +962,7 @@ namespace qcs
                 exp_minus_i_beta = qcs::complex_t(cos(beta), -sin(beta));
             }
 
-            __device__ void apply(qcs::complex_t const &s00_in,
+             void apply(qcs::complex_t const &s00_in,
                                   qcs::complex_t const &s01_in,
                                   qcs::complex_t const &s10_in,
                                   qcs::complex_t const &s11_in,
@@ -963,7 +985,7 @@ namespace qcs
         {
             static constexpr unsigned int num_target_qubits = 2;
 
-            __device__ void apply(qcs::complex_t const &s00_in,
+             void apply(qcs::complex_t const &s00_in,
                                   qcs::complex_t const &s01_in,
                                   qcs::complex_t const &s10_in,
                                   qcs::complex_t const &s11_in,
@@ -986,7 +1008,7 @@ namespace qcs
         {
             static constexpr unsigned int num_target_qubits = 2;
 
-            __device__ void apply(qcs::complex_t const &s00_in,
+             void apply(qcs::complex_t const &s00_in,
                                   qcs::complex_t const &s01_in,
                                   qcs::complex_t const &s10_in,
                                   qcs::complex_t const &s11_in,
@@ -1010,7 +1032,7 @@ namespace qcs
         {
             static constexpr unsigned int num_target_qubits = 3;
 
-            __device__ void apply(qcs::complex_t const &s000_in,
+             void apply(qcs::complex_t const &s000_in,
                                   qcs::complex_t const &s001_in,
                                   qcs::complex_t const &s010_in,
                                   qcs::complex_t const &s011_in,
@@ -1045,7 +1067,7 @@ namespace qcs
         {
             static constexpr unsigned int num_target_qubits = 4;
 
-            __device__ void apply(qcs::complex_t const &s0000_in,
+             void apply(qcs::complex_t const &s0000_in,
                                   qcs::complex_t const &s0001_in,
                                   qcs::complex_t const &s0010_in,
                                   qcs::complex_t const &s0011_in,
@@ -1103,7 +1125,7 @@ namespace qcs
 
     }
 
-    __global__ void materialize_projection_kernel(
+     void materialize_projection_kernel(
         qcs::complex_t *state,
         uint64_t num_states_local,
         uint64_t local_mask,
@@ -1121,9 +1143,9 @@ namespace qcs
     }
 
     template <typename GateType>
-    __global__
+    
         typename std::enable_if<GateType::num_target_qubits == 0>::type
-        cuda_gate(GateType const gateobj)
+        cpu_gate(GateType const gateobj)
     {
         int64_t const thread_num = (uint64_t)threadIdx.x + (uint64_t)blockIdx.x * (uint64_t)blockDim.x;
 
@@ -1135,9 +1157,9 @@ namespace qcs
     }
 
     template <typename GateType>
-    __global__
+    
         typename std::enable_if<GateType::num_target_qubits == 1>::type
-        cuda_gate(GateType const gateobj)
+        cpu_gate(GateType const gateobj)
     {
         int64_t const thread_num = (uint64_t)threadIdx.x + (uint64_t)blockIdx.x * (uint64_t)blockDim.x;
 
@@ -1172,9 +1194,9 @@ namespace qcs
     }
 
     template <typename GateType>
-    __global__
+    
         typename std::enable_if<GateType::num_target_qubits == 2>::type
-        cuda_gate(GateType const gateobj)
+        cpu_gate(GateType const gateobj)
     {
         int64_t const thread_num = (uint64_t)threadIdx.x + (uint64_t)blockIdx.x * (uint64_t)blockDim.x;
 
@@ -1236,9 +1258,9 @@ namespace qcs
     }
 
     template <typename GateType>
-    __global__
+    
         typename std::enable_if<GateType::num_target_qubits == 3>::type
-        cuda_gate(GateType const gateobj)
+        cpu_gate(GateType const gateobj)
     {
         int64_t const thread_num = (uint64_t)threadIdx.x + (uint64_t)blockIdx.x * (uint64_t)blockDim.x;
 
@@ -1370,9 +1392,9 @@ namespace qcs
     }
 
     template <typename GateType>
-    __global__
+    
         typename std::enable_if<GateType::num_target_qubits == 4>::type
-        cuda_gate(GateType const gateobj)
+        cpu_gate(GateType const gateobj)
     {
         int64_t const thread_num = (uint64_t)threadIdx.x + (uint64_t)blockIdx.x * (uint64_t)blockDim.x;
 
@@ -1637,12 +1659,12 @@ namespace qcs
             qcs::kernel_common_constant.state_data_device[index_state_1111]);
     }
 
-    namespace cubUtility
+    namespace cpuUtility
     {
 
         struct float2Add
         {
-            __device__ qcs::float2_t operator()(const qcs::float2_t &a, const qcs::float2_t &b) const
+             qcs::float2_t operator()(const qcs::float2_t &a, const qcs::float2_t &b) const
             {
                 return {a[0] + b[0], a[1] + b[1]};
             }
@@ -1650,7 +1672,7 @@ namespace qcs
 
         struct IndirectLoad
         {
-            __device__ qcs::float2_t operator()(uint64_t thread_num) const
+             qcs::float2_t operator()(uint64_t thread_num) const
             {
                 uint64_t index_state_0, index_state_1;
                 int is_measured_bits, measured_value_bits;
@@ -1658,17 +1680,17 @@ namespace qcs
 
                 // since target_qubit must be unmeasured, branching is not necessary.
                 return qcs::float2_t{
-                    cuda::std::norm(qcs::kernel_common_constant.state_data_device[index_state_0]),
-                    cuda::std::norm(qcs::kernel_common_constant.state_data_device[index_state_1])};
+                    std::norm(qcs::kernel_common_constant.state_data_device[index_state_0]),
+                    std::norm(qcs::kernel_common_constant.state_data_device[index_state_1])};
 
                 // return qcs::float2_t{
-                //     (measured_state != 1)? cuda::std::norm(qcs::kernel_common_constant.state_data_device[index_state_0]): 0,
-                //     (measured_state != 0)? cuda::std::norm(qcs::kernel_common_constant.state_data_device[index_state_1]): 0
+                //     (measured_state != 1)? std::norm(qcs::kernel_common_constant.state_data_device[index_state_0]): 0,
+                //     (measured_state != 0)? std::norm(qcs::kernel_common_constant.state_data_device[index_state_1]): 0
                 // };
             }
         };
 
-    } /* cubUtility */
+    } /* cpuUtility */
 
     enum class initstate_enum
     {
@@ -1676,7 +1698,7 @@ namespace qcs
         flat,
         zero,
         entangled,
-        use_curand,
+        random,
         laod_statevector,
     };
 
@@ -1704,9 +1726,6 @@ namespace qcs
 
         int gpu_id;
 
-        ncclUniqueId nccl_id;
-        ncclComm_t nccl_comm;
-        int nccl_rank;
 
         std::vector<int> perm_p2l;
         std::vector<int> perm_l2p;
@@ -1724,8 +1743,8 @@ namespace qcs
         int target_qubit_num_begin;
         int target_qubit_num_end;
 
-        cudaStream_t stream;
-        std::vector<cudaEvent_t> event_list;
+        std::vector<double> event_list;
+        bool owns_mpi = false;
 
         uint64_t num_states;
         int num_qubits_local;
@@ -1745,10 +1764,6 @@ namespace qcs
         int log_swap_buffer_total_length;
         uint64_t swap_buffer_total_length;
         qcs::complex_t *swap_buffer;
-        qcs::float2_t *measure_norm_device;
-
-        void *cub_temp_buffer_device;
-        uint64_t cub_temp_buffer_device_size;
 
         std::vector<int> operand_qubit_num_list;
         std::vector<int> target_qubit_num_physical_list;
@@ -1790,73 +1805,27 @@ namespace qcs
 
         void setup()
         {
-
-            MPI_Init(NULL, NULL);
-            MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
-            MPI_Comm_rank(MPI_COMM_WORLD, &proc_num);
-
-            atlc::group_by_hostname(proc_num, num_procs, my_hostname, my_node_number, my_node_local_rank, node_count);
-            // fprintf(stderr, "[debug] Rank %d on host %s -> assigned node number: %d, local node rank: %d (total nodes: %d)\n", proc_num, my_hostname.c_str(), my_node_number, my_node_local_rank, node_count);
-
-            gpu_id = my_node_local_rank;
-            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
-
-            size_t total_memory_bytes = 0;
-            size_t free_memory_bytes = 0;
-            ATLC_CHECK_CUDA(cudaMemGetInfo, &free_memory_bytes, &total_memory_bytes);
-
-            uint64_t const used_memory_bytes = (uint64_t)total_memory_bytes - (uint64_t)free_memory_bytes;
-            if (used_memory_bytes > (UINT64_C(1) << 27))
-            {
-                fprintf(
-                    stderr,
-                    "[warn] GPU memory already in use before allocations: %.2f GiB (used=%" PRIu64 " bytes, total=%zu bytes).\n",
-                    (double)used_memory_bytes / (double)(UINT64_C(1) << 30),
-                    used_memory_bytes,
-                    total_memory_bytes);
+            int initialized = 0;
+            MPI_Initialized(&initialized);
+            if (!initialized) {
+                ATLC_CHECK_MPI(MPI_Init, nullptr, nullptr);
+                owns_mpi = true;
             }
-
-            if (proc_num == 0)
-            {
-                ATLC_CHECK_NCCL(ncclGetUniqueId, &nccl_id);
-            }
-
-            MPI_Bcast(&nccl_id, sizeof(nccl_id), MPI_BYTE, 0, MPI_COMM_WORLD);
-            nccl_rank = proc_num;
-            ATLC_CHECK_NCCL(ncclCommInitRank, &nccl_comm, num_procs, nccl_id, nccl_rank);
-
-            log_num_procs = atlc::log2_int(num_procs);
-
+            ATLC_CHECK_MPI(MPI_Comm_size, MPI_COMM_WORLD, &num_procs);
+            ATLC_CHECK_MPI(MPI_Comm_rank, MPI_COMM_WORLD, &proc_num);
+            if (num_procs <= 0 || (num_procs & (num_procs - 1)) != 0)
+                throw std::runtime_error("number of MPI ranks must be a power of two");
+            log_num_procs = utility::log2_int(num_procs);
             log_block_size_max = 9;
-
-            ATLC_CHECK_CUDA(cudaStreamCreate, &stream);
-            // ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &event_1, cudaEventDefault);
-            // ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &event_2, cudaEventDefault);
-
             block_size_max = 1 << log_block_size_max;
-
-            ATLC_CHECK_CUDA(cudaGetSymbolAddress, (void **)&qcs_kernel_common_constant_addr, qcs::kernel_common_constant);
-
-            ATLC_CHECK_CUDA(cudaGetSymbolAddress, (void **)&qcs_kernel_input_constant_addr, qcs::kernel_input_constant);
-
-            ATLC_CHECK_CUDA(cudaGetSymbolAddress, (void **)&zero_constant_addr, qcs::zero_constant);
-
-            qcs::complex_t const complex_zero = 0;
-            ATLC_CHECK_CUDA(cudaMemcpyAsync, zero_constant_addr, &complex_zero, sizeof(qcs::complex_t), cudaMemcpyHostToDevice, stream);
-
-            if (proc_num == 0)
-            {
-                std::random_device rng;
-                this->rng_seed = rng(); // & ((UINT64_C(1)<<12)-1);
-            }
-            ATLC_CHECK_MPI(MPI_Bcast, &this->rng_seed, 1, MPI_UNSIGNED, 0, MPI_COMM_WORLD);
-
-            engine = std::mt19937_64(rng_seed);
-
-            cub_temp_buffer_device = NULL;
-            state_data_device = NULL;
-            swap_buffer = NULL;
-
+            zero_constant_addr = &qcs::zero_constant;
+            qcs_kernel_common_constant_addr = &qcs::kernel_common_constant;
+            qcs_kernel_input_constant_addr = reinterpret_cast<qcs::kernel_input_qnlist_struct *>(qcs::kernel_input_constant);
+            if (proc_num == 0) { std::random_device rng; rng_seed = rng(); }
+            ATLC_CHECK_MPI(MPI_Bcast, &rng_seed, 1, MPI_UNSIGNED, 0, MPI_COMM_WORLD);
+            engine.seed(rng_seed);
+            state_data_device = nullptr;
+            swap_buffer = nullptr;
         } /* setup */
 
         void reinitialize_mapping()
@@ -1874,7 +1843,7 @@ namespace qcs
             {
                 if ((int)initial_perm_p2l.size() != num_qubits)
                 {
-                    throw std::runtime_error(atlc::format("mapping size %d does not match num_qubits %d", (int)initial_perm_p2l.size(), num_qubits));
+                    throw std::runtime_error(utility::format("mapping size %d does not match num_qubits %d", (int)initial_perm_p2l.size(), num_qubits));
                 }
 
                 perm_p2l = initial_perm_p2l;
@@ -1888,43 +1857,22 @@ namespace qcs
 
         void allocate_memory(bit_num_t num_qubits)
         {
-
-            size_t total_memory_bytes = 0;
-            size_t free_memory_bytes = 0;
-            ATLC_CHECK_CUDA(cudaMemGetInfo, &free_memory_bytes, &total_memory_bytes);
-            initial_free_memory_bytes = free_memory_bytes;
-
-            max_num_qubits_local_device = atlc::log2_int((uint64_t)initial_free_memory_bytes >> 4);
-            if (proc_num == 0 && max_num_qubits_local_device > qcs::max_num_qubits_local)
-            {
-                fprintf(
-                    stderr,
-                    "[warn] recommendation: increase qcs::max_num_qubits_local (current=%d, device-based=%d).\n",
-                    qcs::max_num_qubits_local,
-                    max_num_qubits_local_device);
-            }
-
-            if (num_qubits > max_num_qubits_local_device + log_num_procs)
-            {
-                throw std::runtime_error(atlc::format("num_qubits(%d) > max_num_qubits_local_device(%d) + log_num_procs(%d)", num_qubits, max_num_qubits_local_device, log_num_procs));
-            }
-
+            if (num_qubits < log_num_procs)
+                throw std::runtime_error("num_qubits must be at least log2(number of MPI ranks)");
+            if (num_qubits >= 63)
+                throw std::runtime_error("num_qubits must be less than 63");
             std::vector<std::string> exmes_list;
             if (this->num_qubits > 0)
             {
-                exmes_list.push_back(atlc::format("num_qubits is already set %d > 0", this->num_qubits));
-            }
-            if (cub_temp_buffer_device)
-            {
-                exmes_list.push_back(atlc::format("cub_temp_buffer_device is %p not NULL", cub_temp_buffer_device));
+                exmes_list.push_back(utility::format("num_qubits is already set %d > 0", this->num_qubits));
             }
             if (state_data_device)
             {
-                exmes_list.push_back(atlc::format("state_data_device is %p not NULL", state_data_device));
+                exmes_list.push_back(utility::format("state_data_device is %p not NULL", state_data_device));
             }
             if (swap_buffer)
             {
-                exmes_list.push_back(atlc::format("swap_buffer is %p not NULL", swap_buffer));
+                exmes_list.push_back(utility::format("swap_buffer is %p not NULL", swap_buffer));
             }
             if (exmes_list.size() > 0)
             {
@@ -1949,212 +1897,70 @@ namespace qcs
 
             num_states_local = UINT64_C(1) << num_qubits_local;
 
-            if (use_unified_memory)
-            {
-                ATLC_CHECK_CUDA(cudaMallocManaged, &state_data_device, num_states_local * sizeof(*state_data_device));
-            }
-            else
-            {
-                ATLC_CHECK_CUDA(cudaMallocAsync, &state_data_device, num_states_local * sizeof(*state_data_device), stream);
-            }
+            state_data_device = new qcs::complex_t[num_states_local];
             initialize_zero();
-
             qcs_kernel_common_host.num_qubits = num_qubits;
             qcs_kernel_common_host.state_data_device = state_data_device;
-            ATLC_CHECK_CUDA(cudaMemcpyAsync, qcs_kernel_common_constant_addr, &qcs_kernel_common_host, sizeof(qcs::kernel_common_struct), cudaMemcpyHostToDevice, stream);
-
-            uint64_t const allocatable_states = (uint64_t)initial_free_memory_bytes >> 4;
-            if (allocatable_states > num_states_local)
-            {
-                uint64_t const swap_buffer_total_length_avail = allocatable_states - num_states_local;
-                int const log_swap_buffer_total_length_avail = atlc::log2_int(swap_buffer_total_length_avail);
-                if (log_swap_buffer_total_length_avail >= num_qubits_local - 1)
-                {
-                    log_swap_buffer_total_length = num_qubits_local - 1;
-                }
-                else
-                {
-                    log_swap_buffer_total_length = log_swap_buffer_total_length_avail;
-                    fprintf(
-                        stderr,
-                        "[warn] swap buffer length reduced due to free memory limit (log=%d, target=%d).\n",
-                        log_swap_buffer_total_length,
-                        num_qubits_local - 1);
-                }
-            }
-            else
-            {
-                log_swap_buffer_total_length = 0;
-                fprintf(
-                    stderr,
-                    "[warn] insufficient free memory for additional swap buffer allocation (bytes=%zu).\n",
-                    initial_free_memory_bytes);
-            }
-            swap_buffer_total_length = UINT64_C(1) << log_swap_buffer_total_length;
-            ATLC_CHECK_CUDA(cudaMallocAsync, &swap_buffer, swap_buffer_total_length * sizeof(qcs::complex_t), stream);
-
-            ATLC_CHECK_CUDA(cudaMallocAsync, &cub_temp_buffer_device, 1, stream);
-            cub_temp_buffer_device_size = 1;
-
-            ATLC_CHECK_CUDA(cudaMallocAsync, &measure_norm_device, sizeof(qcs::complex_t), stream);
+            qcs::kernel_common_constant = qcs_kernel_common_host;
+            swap_buffer_total_length = num_states_local > 1 ? num_states_local / 2 : 1;
+            log_swap_buffer_total_length = utility::log2_int(swap_buffer_total_length);
+            swap_buffer = new qcs::complex_t[swap_buffer_total_length];
         }
 
         void free_memory()
         {
-            if (cub_temp_buffer_device)
-            {
-                ATLC_CHECK_CUDA(cudaFreeAsync, cub_temp_buffer_device, stream);
-                cub_temp_buffer_device = NULL;
-            }
-            if (state_data_device)
-            {
-                ATLC_CHECK_CUDA(cudaFreeAsync, state_data_device, stream);
-                state_data_device = NULL;
-            }
-            if (swap_buffer)
-            {
-                ATLC_CHECK_CUDA(cudaFreeAsync, swap_buffer, stream);
-                swap_buffer = NULL;
-            }
-            if (measure_norm_device)
-            {
-                ATLC_CHECK_CUDA(cudaFreeAsync, measure_norm_device, stream);
-                measure_norm_device = NULL;
-            }
+            delete[] state_data_device; state_data_device = nullptr;
+            delete[] swap_buffer; swap_buffer = nullptr;
             this->num_qubits = 0;
         }
 
         void initialize_sequential()
         {
             discard_measurement_state();
-            uint64_t num_blocks_init;
-            uint64_t block_size_init;
-            if (num_qubits_local >= log_block_size_max)
-            {
-                num_blocks_init = num_states_local >> log_block_size_max;
-                block_size_init = block_size_max;
-            }
-            else
-            {
-                num_blocks_init = 1;
-                block_size_init = num_states_local;
-            }
-
-            ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, qcs::initstate_sequential_kernel, num_blocks_init, block_size_init, 0, stream, state_data_device, proc_num);
-        } /* initialize_sequential */
+            uint64_t const offset = uint64_t(proc_num) * num_states_local;
+            for (uint64_t i = 0; i < num_states_local; ++i) state_data_device[i] = qcs::complex_t(i + offset, 0);
+        }
 
         void initialize_flat()
         {
             discard_measurement_state();
-            uint64_t num_blocks_init;
-            uint64_t block_size_init;
-            if (num_qubits_local >= log_block_size_max)
-            {
-                num_blocks_init = num_states_local >> log_block_size_max;
-                block_size_init = block_size_max;
-            }
-            else
-            {
-                num_blocks_init = 1;
-                block_size_init = num_states_local;
-            }
-
-            ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, qcs::initstate_flat_kernel, num_blocks_init, block_size_init, 0, stream, state_data_device);
-        } /* initialize_flat */
+            std::fill_n(state_data_device, num_states_local, qcs::complex_t(1, 0));
+        }
 
         void initialize_zero()
         {
             discard_measurement_state();
-            if (proc_num == 0)
-            {
-                qcs::complex_t const one = 1;
-                ATLC_CHECK_CUDA(cudaMemcpyAsync, state_data_device, &one, sizeof(qcs::complex_t), cudaMemcpyHostToDevice, stream);
-                ATLC_CHECK_CUDA(cudaMemset, state_data_device + 1, 0, sizeof(qcs::complex_t) * (num_states_local - 1));
-            }
-            else
-            {
-                ATLC_CHECK_CUDA(cudaMemset, state_data_device, 0, sizeof(qcs::complex_t) * num_states_local);
-            }
+            std::fill_n(state_data_device, num_states_local, qcs::complex_t(0, 0));
+            if (proc_num == 0) state_data_device[0] = 1;
         }
 
         void initialize_entangled()
         {
             discard_measurement_state();
-            if (proc_num == 0)
-            {
-                qcs::complex_t const one = 1;
-                ATLC_CHECK_CUDA(cudaMemcpyAsync, state_data_device, &one, sizeof(qcs::complex_t), cudaMemcpyHostToDevice, stream);
-            }
-            else if (proc_num == num_procs - 1)
-            {
-                qcs::complex_t const one = 1;
-                ATLC_CHECK_CUDA(cudaMemcpyAsync, state_data_device + num_states_local - 1, &one, sizeof(qcs::complex_t), cudaMemcpyHostToDevice, stream);
-            }
+            std::fill_n(state_data_device, num_states_local, qcs::complex_t(0, 0));
+            if (proc_num == 0) state_data_device[0] = 1;
+            if (proc_num == num_procs - 1) state_data_device[num_states_local - 1] = 1;
         }
 
-        void initialize_use_curand()
+        void initialize_random()
         {
             discard_measurement_state();
-
-            MPI_Barrier(MPI_COMM_WORLD);
-            if (proc_num == 0)
-            {
-                fprintf(stderr, "[info] generating random state\n");
-            }
-            curandGenerator_t rng_device;
-
-            {
-                int const log_num_rand_areas = atlc::log2_int(num_rand_areas);
-                uint64_t const num_states_rand_area = num_states_local >> log_num_rand_areas;
-                for (int rand_area_num = 0; rand_area_num < num_rand_areas; rand_area_num++)
-                {
-                    ATLC_CHECK_CURAND(curandCreateGenerator, &rng_device, CURAND_RNG_PSEUDO_DEFAULT);
-                    ATLC_CHECK_CURAND(curandSetStream, rng_device, stream);
-                    ATLC_CHECK_CURAND(curandSetPseudoRandomGeneratorSeed, rng_device, rng_seed + proc_num * num_rand_areas + rand_area_num);
-                    ATLC_CHECK_CURAND(curandGenerateNormalDouble, rng_device, (qcs::float_t *)(void *)(state_data_device + num_states_rand_area * ((uint64_t)rand_area_num)), num_states_rand_area * 2 /* complex */, 0.0, 1.0);
-                    ATLC_CHECK_CURAND(curandDestroyGenerator, rng_device);
-                }
-            }
-        } /* initialize_use_curand */
+            std::mt19937_64 state_rng(rng_seed + static_cast<unsigned>(proc_num) * num_rand_areas);
+            std::normal_distribution<qcs::float_t> normal(0.0, 1.0);
+            for (uint64_t i = 0; i < num_states_local; ++i)
+                state_data_device[i] = {normal(state_rng), normal(state_rng)};
+        }
 
         void initialize_laod_statevector()
         {
             discard_measurement_state();
-
-            MPI_Barrier(MPI_COMM_WORLD);
-
-            if (proc_num == 0)
-            {
-                fprintf(stderr, "[info] load statevector\n");
-            }
-
-            qcs::complex_t *state_data_host = (qcs::complex_t *)malloc(num_states_local * sizeof(qcs::complex_t));
-            ATLC_DEFER_FUNC(free, state_data_host);
-
-            for (int proc_num_active = 0; proc_num_active < num_procs; proc_num_active++)
-            {
-                if (proc_num_active == proc_num)
-                {
-                    FILE *const fp = fopen("statevector_input.bin", "rb");
-                    if (fp == NULL)
-                    {
-                        throw std::runtime_error("open failed");
-                    }
-                    fseek(fp, proc_num * num_states_local * sizeof(qcs::complex_t), SEEK_SET);
-                    size_t const ret = fread(state_data_host, sizeof(qcs::complex_t), num_states_local, fp);
-                    if (ret != num_states_local)
-                    {
-                        throw std::runtime_error("fread failed");
-                    }
-                    fclose(fp);
-
-                    ATLC_CHECK_CUDA(cudaMemcpyAsync, state_data_device, state_data_host, num_states_local * sizeof(qcs::complex_t), cudaMemcpyHostToDevice, stream);
-                }
-                MPI_Barrier(MPI_COMM_WORLD);
-            }
-
-            ATLC_CHECK_CUDA(cudaStreamSynchronize, stream);
-        } /* initialize_laod_statevector */
+            FILE *fp = fopen("statevector_input.bin", "rb");
+            if (!fp) throw std::runtime_error("open failed");
+            fseek(fp, proc_num * num_states_local * sizeof(qcs::complex_t), SEEK_SET);
+            size_t const read = fread(state_data_device, sizeof(qcs::complex_t), num_states_local, fp);
+            fclose(fp);
+            if (read != num_states_local) throw std::runtime_error("fread failed");
+        }
 
         void prepare_control_qubit_num_list()
         {
@@ -2278,25 +2084,16 @@ namespace qcs
                         continue;
                     }
 
-                    bool is_peer_greater = proc_num_peer > proc_num;
                     for (uint64_t buffer_pos = 0; buffer_pos < local_buf_length; buffer_pos += swap_buffer_length)
                     {
-                        ATLC_CHECK_NCCL(ncclGroupStart);
-                        for (int send_recv = 0; send_recv < 2; send_recv++)
-                        {
-                            if (send_recv ^ is_peer_greater)
-                            {
-                                ATLC_CHECK_NCCL(ncclSend, &state_data_device[local_num_self * local_buf_length + buffer_pos], swap_buffer_length * 2 /* complex */, ncclDouble, proc_num_peer, nccl_comm, stream);
-                            }
-                            else
-                            {
-                                ATLC_CHECK_NCCL(ncclRecv, swap_buffer, swap_buffer_length * 2 /* complex */, ncclDouble, proc_num_peer, nccl_comm, stream);
-                            }
-                        }
-                        ATLC_CHECK_NCCL(ncclGroupEnd);
-                        ATLC_CHECK_CUDA(cudaMemcpyAsync, &state_data_device[local_num_self * local_buf_length + buffer_pos], swap_buffer, swap_buffer_length * sizeof(qcs::complex_t), cudaMemcpyDeviceToDevice, stream);
+                        qcs::complex_t *chunk = &state_data_device[local_num_self * local_buf_length + buffer_pos];
+                        ATLC_CHECK_MPI(MPI_Sendrecv,
+                            chunk, static_cast<int>(swap_buffer_length * 2), MPI_DOUBLE, proc_num_peer, 0,
+                            swap_buffer, static_cast<int>(swap_buffer_length * 2), MPI_DOUBLE, proc_num_peer, 0,
+                            MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                        std::copy_n(swap_buffer, swap_buffer_length, chunk);
                     }
-                }
+                    }
 
                 // swap_target_global_logical_list[:] = perm_p2l[swap_target_global_list[:]]
                 // swap_target_local_logical_list[:] = perm_p2l[swap_target_local_list[:]]
@@ -2418,7 +2215,7 @@ namespace qcs
                 qubit_num_list_sorted_kernel_arg[qni] = operand_qubit_num_list[qni];
             }
 
-            ATLC_CHECK_CUDA(cudaMemcpyAsync, qcs_kernel_input_constant_addr, qcs_kernel_input_host, qkiqn_size, cudaMemcpyHostToDevice, stream);
+            std::memcpy(qcs_kernel_input_constant_addr, qcs_kernel_input_host, qkiqn_size);
 
             uint64_t const log_num_threads = num_qubits_local - num_operand_qubits;
 
@@ -2488,14 +2285,12 @@ namespace qcs
 
             if ((((uint64_t)proc_num ^ rank_value) & rank_mask) != 0)
             {
-                ATLC_CHECK_CUDA(cudaMemsetAsync, state_data_device, 0, num_states_local * sizeof(qcs::complex_t), stream);
+                std::fill_n(state_data_device, num_states_local, qcs::complex_t{});
             }
             else if (local_mask != 0)
             {
-                uint64_t const block_size = std::min<uint64_t>(block_size_max, num_states_local);
-                uint64_t const num_blocks = (num_states_local + block_size - 1) / block_size;
-                ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, qcs::materialize_projection_kernel, num_blocks, block_size, 0, stream,
-                                state_data_device, num_states_local, local_mask, local_value);
+                for (uint64_t i = 0; i < num_states_local; ++i)
+                    if (((i ^ local_value) & local_mask) != 0) state_data_device[i] = {};
             }
             pending_projection_mask_logical &= ~todo_mask;
         }
@@ -2514,10 +2309,7 @@ namespace qcs
             MPI_Barrier(MPI_COMM_WORLD);
             // if (proc_num == 0) { fprintf(stderr, "[info] dump statevector\n"); }
 
-            qcs::complex_t *state_data_host = (qcs::complex_t *)malloc(num_states_local * sizeof(qcs::complex_t));
-            ATLC_DEFER_FUNC(free, state_data_host);
-
-            ATLC_CHECK_CUDA(cudaMemcpyAsync, state_data_host, state_data_device, num_states_local * sizeof(qcs::complex_t), cudaMemcpyDeviceToHost, stream);
+            qcs::complex_t const *state_data_host = state_data_device;
 
             for (int proc_num_active = 0; proc_num_active < num_procs; proc_num_active++)
             {
@@ -2542,18 +2334,18 @@ namespace qcs
                         if (ret_fseek != 0)
                         {
                             auto const errno_saved = errno;
-                            throw std::runtime_error(atlc::format("errorno=%d ret_fseek=%d", errno_saved, ret_fseek));
+                            throw std::runtime_error(utility::format("errorno=%d ret_fseek=%d", errno_saved, ret_fseek));
                         }
                         size_t const ret = fwrite(&state_data_host[state_num_physical_local], sizeof(qcs::complex_t), 1, fp);
                         if (ret != 1)
                         {
                             auto const errno_saved = errno;
-                            throw std::runtime_error(atlc::format("fwrite failed ret=%zu errno=%d", ret, errno_saved));
+                            throw std::runtime_error(utility::format("fwrite failed ret=%zu errno=%d", ret, errno_saved));
                         }
                     }
                     fflush(fp);
-                    fclose(fp);
                     fsync(fileno(fp));
+                    fclose(fp);
                 }
                 MPI_Barrier(MPI_COMM_WORLD);
             }
@@ -2588,39 +2380,16 @@ namespace qcs
 
             float2_t measure_norm_host;
 
+            measure_norm_host = {0, 0};
             if (proc_num_control_condition)
             {
-
-                cubUtility::IndirectLoad loader;
-
-                using CountingIter = thrust::counting_iterator<uint64_t>;
-                using TransformIter = thrust::transform_iterator<decltype(loader), CountingIter>;
-
-                CountingIter counting(0);
-                TransformIter in_it(counting, loader);
-
-                uint64_t temp_sz_required;
-
-                cubUtility::float2Add float2AddObj;
-                float2_t zero{};
-                ATLC_CHECK_CUDA(cub::DeviceReduce::Reduce, NULL, temp_sz_required, in_it, measure_norm_device, num_states_local >> num_operand_qubits, float2AddObj, zero, stream);
-
-                if (cub_temp_buffer_device_size < temp_sz_required)
-                {
-                    ATLC_CHECK_CUDA(cudaFreeAsync, cub_temp_buffer_device, stream);
-                    ATLC_CHECK_CUDA(cudaMallocAsync, &cub_temp_buffer_device, temp_sz_required, stream);
-                    cub_temp_buffer_device_size = temp_sz_required;
+                cpuUtility::IndirectLoad loader;
+                uint64_t const count = num_states_local >> num_operand_qubits;
+                for (uint64_t task = 0; task < count; ++task) {
+                    auto const value = loader(task);
+                    measure_norm_host[0] += value[0];
+                    measure_norm_host[1] += value[1];
                 }
-
-                ATLC_CHECK_CUDA(cub::DeviceReduce::Reduce, cub_temp_buffer_device, cub_temp_buffer_device_size, in_it, measure_norm_device, num_states_local >> num_operand_qubits, float2AddObj, zero, stream);
-
-                ATLC_CHECK_CUDA(cudaMemcpyAsync, &measure_norm_host, measure_norm_device, sizeof(float2_t), cudaMemcpyDeviceToHost, stream);
-
-                ATLC_CHECK_CUDA(cudaStreamSynchronize, stream);
-            }
-            else
-            {
-                measure_norm_host = {0, 0};
             }
 
 #if 1 /* parallel measurement */
@@ -2704,7 +2473,7 @@ namespace qcs
 
             if (proc_num_control_condition)
             {
-                ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, cuda_gate<GateType>, num_blocks_gateop, block_size_gateop, 0, stream, gateobj);
+                utility::cpu_launch(cpu_gate<GateType>, num_blocks_gateop, block_size_gateop, gateobj);
             }
 
             update_measured_list();
@@ -2787,8 +2556,8 @@ void measurement_sample() {
         case initstate_enum::entangled:
             initialize_entangled();
             break;
-        case initstate_enum::use_curand:
-            initialize_use_curand();
+        case initstate_enum::random:
+            initialize_random();
             break;
         case initstate_enum::laod_statevector:
             initialize_laod_statevector();
@@ -2847,64 +2616,29 @@ int main() {
         void dispose()
         {
             free_memory();
-            for (cudaEvent_t event : event_list)
-            {
-                ATLC_CHECK_CUDA(cudaEventDestroy, event);
+            if (owns_mpi) {
+                int finalized = 0; MPI_Finalized(&finalized);
+                if (!finalized) MPI_Finalize();
             }
-            ATLC_CHECK_CUDA(cudaStreamDestroy, stream);
-            MPI_Finalize();
-        };
+        }
 
         int event_create()
         {
-            int const event_num = event_list.size();
-            cudaEvent_t event;
-            ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &event, cudaEventDefault);
-            this->event_list.push_back(event);
-            return event_num;
+            event_list.push_back(0.0);
+            return static_cast<int>(event_list.size() - 1);
         }
 
         void event_record(int const event_num)
         {
-            cudaEvent_t const event = event_list[event_num];
-            ATLC_CHECK_CUDA(cudaEventRecordWithFlags, event, stream, cudaEventDefault);
+            event_list.at(event_num) = MPI_Wtime();
         }
 
         double event_get_elapsed_time(int const start_event_num, int const stop_event_num)
         {
-            cudaEvent_t const start = event_list[start_event_num];
-            cudaEvent_t const stop = event_list[stop_event_num];
-
-            cudaError_t q;
-
-            q = cudaEventQuery(start);
-            if (q == cudaErrorNotReady)
-            {
-                ATLC_CHECK_CUDA(cudaEventSynchronize, start);
-            }
-            else if (q != cudaSuccess)
-            {
-                throw std::runtime_error(cudaGetErrorString(q));
-            }
-
-            q = cudaEventQuery(stop);
-            if (q == cudaErrorNotReady)
-            {
-                ATLC_CHECK_CUDA(cudaEventSynchronize, stop);
-            }
-            else if (q != cudaSuccess)
-            {
-                throw std::runtime_error(cudaGetErrorString(q));
-            }
-
-            float elapsed_ms = 0.0f;
-            ATLC_CHECK_CUDA(cudaEventElapsedTime, &elapsed_ms, start, stop);
-
-            float elapsed_ms_global;
-
-            MPI_Allreduce(&elapsed_ms, &elapsed_ms_global, 1, MPI_FLOAT, MPI_MAX, MPI_COMM_WORLD);
-
-            return elapsed_ms_global * 1e-3;
+            double const local = event_list.at(stop_event_num) - event_list.at(start_event_num);
+            double global = 0;
+            ATLC_CHECK_MPI(MPI_Allreduce, &local, &global, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+            return global;
         }
 
     }; /* simulator_core */
@@ -3059,14 +2793,14 @@ void qcs_simulator_set_mapping_cxx(qcs_simulator *sim, bit_num_t const *perm_p2l
     if (sim->num_qubits <= 0)
         throw std::runtime_error("set_num_qubits must be called before set_mapping");
     if ((int)perm_p2l.size() != sim->num_qubits)
-        throw std::runtime_error(atlc::format("mapping size %d does not match num_qubits %d", (int)perm_p2l.size(), sim->num_qubits));
+        throw std::runtime_error(utility::format("mapping size %d does not match num_qubits %d", (int)perm_p2l.size(), sim->num_qubits));
     std::vector<bool> used(sim->num_qubits, false);
     for (int logical_qubit_num : perm_p2l)
     {
         if (logical_qubit_num < 0 || logical_qubit_num >= sim->num_qubits)
-            throw std::runtime_error(atlc::format("mapping value %d is out of range [0, %d)", logical_qubit_num, sim->num_qubits));
+            throw std::runtime_error(utility::format("mapping value %d is out of range [0, %d)", logical_qubit_num, sim->num_qubits));
         if (used[logical_qubit_num])
-            throw std::runtime_error(atlc::format("mapping value %d appears multiple times", logical_qubit_num));
+            throw std::runtime_error(utility::format("mapping value %d appears multiple times", logical_qubit_num));
         used[logical_qubit_num] = true;
     }
     sim->core->initial_perm_p2l = perm_p2l;
@@ -3094,7 +2828,7 @@ void qcs_simulator_set_zero_state_cxx(qcs_simulator *sim) { sim->core->initializ
 void qcs_simulator_set_sequential_state_cxx(qcs_simulator *sim) { sim->core->initialize_sequential(); }
 void qcs_simulator_set_flat_state_cxx(qcs_simulator *sim) { sim->core->initialize_flat(); }
 void qcs_simulator_set_entangled_state_cxx(qcs_simulator *sim) { sim->core->initialize_entangled(); }
-void qcs_simulator_set_random_state_cxx(qcs_simulator *sim) { sim->core->initialize_use_curand(); }
+void qcs_simulator_set_random_state_cxx(qcs_simulator *sim) { sim->core->initialize_random(); }
 
 void qcs_simulator_gate_global_phase_cxx(qcs_simulator *sim, double theta, bit_num_t const *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, bit_num_t const *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count)
 {
