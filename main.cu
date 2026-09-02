@@ -217,14 +217,61 @@ int main(int argc, char** argv) {
     cudaStream_t stream;
     cudaEvent_t event_1;
     cudaEvent_t event_2;
+    cudaEvent_t synchronization_event;
     ATLC_CHECK_CUDA(cudaStreamCreate, &stream);
     ATLC_CHECK_CUDA(cudaEventCreate, &event_1);
     ATLC_CHECK_CUDA(cudaEventCreate, &event_2);
+    ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &synchronization_event,
+        cudaEventInterprocess | cudaEventDisableTiming);
     ATLC_DEFER_CODE({
+        ATLC_CHECK_CUDA(cudaEventDestroy, synchronization_event);
         ATLC_CHECK_CUDA(cudaEventDestroy, event_2);
         ATLC_CHECK_CUDA(cudaEventDestroy, event_1);
         ATLC_CHECK_CUDA(cudaStreamDestroy, stream);
     });
+
+    cudaIpcEventHandle_t local_event_handle;
+    ATLC_CHECK_CUDA(cudaIpcGetEventHandle, &local_event_handle, synchronization_event);
+    std::vector<cudaIpcEventHandle_t> event_handles(num_ranks);
+    MPI_Allgather(&local_event_handle, sizeof(local_event_handle), MPI_BYTE,
+        event_handles.data(), sizeof(local_event_handle), MPI_BYTE, MPI_COMM_WORLD);
+
+    std::vector<cudaEvent_t> peer_events(num_ranks, nullptr);
+    for (int peer = 0; peer < num_ranks; ++peer) {
+        if (peer != rank) {
+            ATLC_CHECK_CUDA(cudaIpcOpenEventHandle, &peer_events[peer], event_handles[peer]);
+        }
+    }
+    ATLC_DEFER_CODE({
+        for (int peer = 0; peer < num_ranks; ++peer) {
+            if (peer != rank) {
+                ATLC_CHECK_CUDA(cudaEventDestroy, peer_events[peer]);
+            }
+        }
+    });
+
+    int synchronization_epoch = 0;
+    std::vector<int> ready_epochs(num_ranks);
+    std::vector<int> wait_enqueued_epochs(num_ranks);
+    auto synchronize_gpu_work = [&]() {
+        ++synchronization_epoch;
+        ATLC_CHECK_CUDA(cudaEventRecord, synchronization_event, stream);
+
+        // This collective only announces that every rank has recorded its IPC
+        // event. GPU completion remains entirely stream ordered below.
+        MPI_Allgather(&synchronization_epoch, 1, MPI_INT,
+            ready_epochs.data(), 1, MPI_INT, MPI_COMM_WORLD);
+        for (int peer = 0; peer < num_ranks; ++peer) {
+            if (peer != rank) {
+                ATLC_CHECK_CUDA(cudaStreamWaitEvent, stream, peer_events[peer], 0);
+            }
+        }
+
+        // Do not re-record the shared event until every peer has enqueued its
+        // wait for this generation. This handshake does not wait for GPU work.
+        MPI_Allgather(&synchronization_epoch, 1, MPI_INT,
+            wait_enqueued_epochs.data(), 1, MPI_INT, MPI_COMM_WORLD);
+    };
 
     my_complex_t** state_data_device_list_constmem_addr;
     ATLC_CHECK_CUDA(cudaGetSymbolAddress<decltype(state_data_device_list_constmem)>,
@@ -277,8 +324,7 @@ int main(int argc, char** argv) {
         ATLC_CHECK_CUDA(cudaMemcpyAsync, state_data_device, &zero_state_amplitude,
             sizeof(zero_state_amplitude), cudaMemcpyHostToDevice, stream);
     }
-    ATLC_CHECK_CUDA(cudaStreamSynchronize, stream);
-    MPI_Barrier(MPI_COMM_WORLD);
+    synchronize_gpu_work();
 
     fprintf(stderr, "[info] gpu_hadamard\n");
 
@@ -295,15 +341,13 @@ int main(int argc, char** argv) {
                 if (target_qubit_num == num_qubits - log_num_gpus) {
                     // The first global gate may read a peer's state split, so
                     // all preceding local gates must have completed first.
-                    ATLC_CHECK_CUDA(cudaStreamSynchronize, stream);
-                    MPI_Barrier(MPI_COMM_WORLD);
+                    synchronize_gpu_work();
                 }
                 ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, cuda_gate<hadamard_global>, num_blocks,
                     block_size, 0, stream, num_gpus, log_num_gpus, rank, num_qubits, target_qubit_num);
-                // Remote state is consumed by the next global gate.  Complete
-                // CUDA work on every rank before proceeding collectively.
-                ATLC_CHECK_CUDA(cudaStreamSynchronize, stream);
-                MPI_Barrier(MPI_COMM_WORLD);
+                // Remote state is consumed by the next global gate. Record an
+                // IPC event and make the next operation wait in the stream.
+                synchronize_gpu_work();
             }
         }
 
