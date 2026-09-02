@@ -53,6 +53,8 @@ namespace qcs
     typedef cuda::std::complex<qcs::float_t> complex_t;
     typedef cuda::std::array<qcs::float_t, 2> float2_t;
 
+    static constexpr int max_num_gpus_uva = 8;
+
     __device__ __host__ complex_t multiply_i(complex_t input)
     {
         return complex_t(-input.imag(), input.real());
@@ -85,6 +87,7 @@ namespace qcs
     {
         int num_qubits;
         qcs::complex_t *state_data_device;
+        qcs::complex_t *state_data_device_peer[max_num_gpus_uva];
     };
 
     __constant__ qcs::complex_t zero_constant;
@@ -1637,6 +1640,83 @@ namespace qcs
             qcs::kernel_common_constant.state_data_device[index_state_1111]);
     }
 
+    template <typename GateType>
+    __device__ void apply_uva_gate_naive(
+        GateType const &gateobj, qcs::complex_t const *input, qcs::complex_t *output)
+    {
+        if constexpr (GateType::num_target_qubits == 1)
+            gateobj.apply(input[0], input[1], output[0], output[1]);
+        else if constexpr (GateType::num_target_qubits == 2)
+            gateobj.apply(input[0], input[1], input[2], input[3],
+                          output[0], output[1], output[2], output[3]);
+        else if constexpr (GateType::num_target_qubits == 3)
+            gateobj.apply(input[0], input[1], input[2], input[3], input[4], input[5], input[6], input[7],
+                          output[0], output[1], output[2], output[3], output[4], output[5], output[6], output[7]);
+        else if constexpr (GateType::num_target_qubits == 4)
+            gateobj.apply(input[0], input[1], input[2], input[3], input[4], input[5], input[6], input[7],
+                          input[8], input[9], input[10], input[11], input[12], input[13], input[14], input[15],
+                          output[0], output[1], output[2], output[3], output[4], output[5], output[6], output[7],
+                          output[8], output[9], output[10], output[11], output[12], output[13], output[14], output[15]);
+    }
+
+    /*
+     * A deliberately simple UVA kernel.  One rank in each peer pair evaluates a
+     * complete target tile and writes both halves through CUDA IPC mappings.
+     * Keeping this separate from cuda_gate leaves the well-tuned local path
+     * unchanged.
+     */
+    template <typename GateType>
+    __global__ void cuda_gate_uva_naive(
+        GateType const gateobj, cuda::std::array<int, 4> targets,
+        int num_qubits_local, int uva_target_index, int uva_rank_bit,
+        int peer_local_rank, uint64_t local_control_mask, uint64_t local_control_value)
+    {
+        uint64_t const thread_num = (uint64_t)threadIdx.x + (uint64_t)blockIdx.x * blockDim.x;
+        int local_targets[4];
+        int num_local_targets = 0;
+        for (int i = 0; i < GateType::num_target_qubits; ++i)
+            if (i != uva_target_index)
+                local_targets[num_local_targets++] = targets[i];
+        for (int i = 1; i < num_local_targets; ++i)
+            for (int j = i; j > 0 && local_targets[j] < local_targets[j - 1]; --j)
+            {
+                int const t = local_targets[j];
+                local_targets[j] = local_targets[j - 1];
+                local_targets[j - 1] = t;
+            }
+
+        uint64_t base = thread_num;
+        for (int i = 0; i < num_local_targets; ++i)
+        {
+            uint64_t const low = base & ((UINT64_C(1) << local_targets[i]) - 1);
+            base = low | ((base & ~((UINT64_C(1) << local_targets[i]) - 1)) << 1);
+        }
+        if ((base & local_control_mask) != local_control_value)
+            return;
+
+        qcs::complex_t input[16];
+        qcs::complex_t output[16];
+        for (int state = 0; state < (1 << GateType::num_target_qubits); ++state)
+        {
+            uint64_t index = base;
+            int rank = (state >> uva_target_index) & 1 ? peer_local_rank : (peer_local_rank ^ (1 << uva_rank_bit));
+            for (int target = 0; target < GateType::num_target_qubits; ++target)
+                if (target != uva_target_index && ((state >> target) & 1))
+                    index |= UINT64_C(1) << targets[target];
+            input[state] = kernel_common_constant.state_data_device_peer[rank][index];
+        }
+        apply_uva_gate_naive(gateobj, input, output);
+        for (int state = 0; state < (1 << GateType::num_target_qubits); ++state)
+        {
+            uint64_t index = base;
+            int rank = (state >> uva_target_index) & 1 ? peer_local_rank : (peer_local_rank ^ (1 << uva_rank_bit));
+            for (int target = 0; target < GateType::num_target_qubits; ++target)
+                if (target != uva_target_index && ((state >> target) & 1))
+                    index |= UINT64_C(1) << targets[target];
+            kernel_common_constant.state_data_device_peer[rank][index] = output[state];
+        }
+    }
+
     namespace cubUtility
     {
 
@@ -1701,6 +1781,9 @@ namespace qcs
         int my_node_number;
         int my_node_local_rank;
         int node_count;
+        MPI_Comm node_local_comm;
+        int node_local_size;
+        int log_num_procs_uva;
 
         int gpu_id;
 
@@ -1729,6 +1812,9 @@ namespace qcs
 
         uint64_t num_states;
         int num_qubits_local;
+        int physical_qubit_low_level_end;
+        int physical_qubit_local_end;
+        int physical_qubit_uva_end;
         uint64_t num_states_local;
 
         uint64_t num_blocks_gateop;
@@ -1736,6 +1822,7 @@ namespace qcs
         uint64_t num_operand_qubits;
 
         qcs::complex_t *state_data_device;
+        std::vector<qcs::complex_t *> state_data_device_peer;
 
         qcs::complex_t *zero_constant_addr;
         qcs::kernel_common_struct *qcs_kernel_common_constant_addr;
@@ -1752,6 +1839,8 @@ namespace qcs
 
         std::vector<int> operand_qubit_num_list;
         std::vector<int> target_qubit_num_physical_list;
+        int uva_target_qubit_physical;
+        int uva_target_index;
         std::vector<int> swap_target_global_list;
         std::vector<int> swap_target_local_list;
         std::vector<int> swap_target_local_logical_list;
@@ -1800,6 +1889,14 @@ namespace qcs
 
             gpu_id = my_node_local_rank;
             ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
+
+            ATLC_CHECK_MPI(MPI_Comm_split_type, MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, proc_num, MPI_INFO_NULL, &node_local_comm);
+            ATLC_CHECK_MPI(MPI_Comm_size, node_local_comm, &node_local_size);
+            if (node_local_size > max_num_gpus_uva || (node_local_size & (node_local_size - 1)) != 0)
+                throw std::runtime_error(atlc::format(
+                    "the number of node-local GPUs must be a power of two not exceeding %d",
+                    max_num_gpus_uva));
+            log_num_procs_uva = atlc::log2_int(node_local_size);
 
             size_t total_memory_bytes = 0;
             size_t free_memory_bytes = 0;
@@ -1947,20 +2044,33 @@ namespace qcs
 
             num_qubits_local = num_qubits - log_num_procs;
 
+            /* [0, low_level_end), [low_level_end, local_end),
+             * [local_end, uva_end), and [uva_end, num_qubits) are the
+             * low-level, local, CUDA-UVA, and NCCL segments respectively. */
+            physical_qubit_low_level_end = std::min(log_block_size_max, num_qubits_local);
+            physical_qubit_local_end = num_qubits_local;
+            physical_qubit_uva_end = num_qubits_local + log_num_procs_uva;
+
             num_states_local = UINT64_C(1) << num_qubits_local;
 
-            if (use_unified_memory)
-            {
-                ATLC_CHECK_CUDA(cudaMallocManaged, &state_data_device, num_states_local * sizeof(*state_data_device));
-            }
-            else
-            {
-                ATLC_CHECK_CUDA(cudaMallocAsync, &state_data_device, num_states_local * sizeof(*state_data_device), stream);
-            }
+            ATLC_CHECK_CUDA(cudaMalloc, &state_data_device, num_states_local * sizeof(*state_data_device));
             initialize_zero();
+
+            cudaIpcMemHandle_t local_state_handle;
+            ATLC_CHECK_CUDA(cudaIpcGetMemHandle, &local_state_handle, state_data_device);
+            std::vector<cudaIpcMemHandle_t> state_handles(node_local_size);
+            ATLC_CHECK_MPI(MPI_Allgather, &local_state_handle, sizeof(local_state_handle), MPI_BYTE,
+                           state_handles.data(), sizeof(local_state_handle), MPI_BYTE, node_local_comm);
+            state_data_device_peer.assign(node_local_size, NULL);
+            state_data_device_peer[my_node_local_rank] = state_data_device;
+            for (int peer = 0; peer < node_local_size; ++peer)
+                if (peer != my_node_local_rank)
+                    ATLC_CHECK_CUDA(cudaIpcOpenMemHandle, &state_data_device_peer[peer], state_handles[peer], cudaIpcMemLazyEnablePeerAccess);
 
             qcs_kernel_common_host.num_qubits = num_qubits;
             qcs_kernel_common_host.state_data_device = state_data_device;
+            std::fill(std::begin(qcs_kernel_common_host.state_data_device_peer), std::end(qcs_kernel_common_host.state_data_device_peer), nullptr);
+            std::copy(state_data_device_peer.begin(), state_data_device_peer.end(), qcs_kernel_common_host.state_data_device_peer);
             ATLC_CHECK_CUDA(cudaMemcpyAsync, qcs_kernel_common_constant_addr, &qcs_kernel_common_host, sizeof(qcs::kernel_common_struct), cudaMemcpyHostToDevice, stream);
 
             uint64_t const allocatable_states = (uint64_t)initial_free_memory_bytes >> 4;
@@ -2008,7 +2118,12 @@ namespace qcs
             }
             if (state_data_device)
             {
-                ATLC_CHECK_CUDA(cudaFreeAsync, state_data_device, stream);
+                ATLC_CHECK_CUDA(cudaStreamSynchronize, stream);
+                for (int peer = 0; peer < (int)state_data_device_peer.size(); ++peer)
+                    if (peer != my_node_local_rank && state_data_device_peer[peer])
+                        ATLC_CHECK_CUDA(cudaIpcCloseMemHandle, state_data_device_peer[peer]);
+                state_data_device_peer.clear();
+                ATLC_CHECK_CUDA(cudaFree, state_data_device);
                 state_data_device = NULL;
             }
             if (swap_buffer)
@@ -2201,8 +2316,10 @@ namespace qcs
 
         } /* prepare_control_qubit_num_list */
 
-        void ensure_local_qubits()
+        void ensure_local_qubits(bool const permit_uva_target = false)
         {
+            uva_target_qubit_physical = -1;
+            uva_target_index = -1;
             target_qubit_num_physical_list.resize(target_qubit_num_logical_list.size());
             for (int tqni = 0; tqni < target_qubit_num_logical_list.size(); tqni++)
             {
@@ -2214,7 +2331,14 @@ namespace qcs
             for (int tqni = 0; tqni < target_qubit_num_physical_list.size(); tqni++)
             {
                 auto const tqn_i = target_qubit_num_physical_list[tqni];
-                if (tqn_i >= num_qubits_local)
+                bool const is_uva = permit_uva_target && tqn_i >= physical_qubit_local_end &&
+                                    tqn_i < physical_qubit_uva_end;
+                if (is_uva && uva_target_index < 0)
+                {
+                    uva_target_qubit_physical = tqn_i;
+                    uva_target_index = tqni;
+                }
+                else if (tqn_i >= num_qubits_local)
                 {
                     swap_target_global_list.push_back(tqn_i);
                     int const swap_target_local = num_qubits_local - swap_target_global_list.size();
@@ -2696,13 +2820,46 @@ namespace qcs
             if (!measured_control_condition)
                 return;
 
-            ensure_local_qubits();
+            ensure_local_qubits(true);
             materialize_pending_projection(release_mask);
             assert((pending_projection_mask_logical & target_mask) == 0);
             check_control_qubit_num_physical();
             prepare_operating_gate();
 
-            if (proc_num_control_condition)
+            if (uva_target_index >= 0)
+            {
+                /* CUDA IPC visibility is node local.  NCCL targets, if any, were
+                 * reordered above; the remaining global target is a UVA bit. */
+                ATLC_CHECK_CUDA(cudaStreamSynchronize, stream);
+                ATLC_CHECK_MPI(MPI_Barrier, node_local_comm);
+                int const uva_rank_bit = uva_target_qubit_physical - num_qubits_local;
+                bool const owns_pair = ((my_node_local_rank >> uva_rank_bit) & 1) == 0;
+                if (proc_num_control_condition && owns_pair)
+                {
+                    uint64_t local_control_mask = 0;
+                    uint64_t local_control_value = 0;
+                    for (int q : negative_control_qubit_num_physical_local_list)
+                        local_control_mask |= UINT64_C(1) << q;
+                    for (int q : positive_control_qubit_num_physical_local_list)
+                    {
+                        local_control_mask |= UINT64_C(1) << q;
+                        local_control_value |= UINT64_C(1) << q;
+                    }
+                    cuda::std::array<int, 4> targets{};
+                    for (int i = 0; i < (int)target_qubit_num_physical_list.size(); ++i)
+                        targets[i] = target_qubit_num_physical_list[i];
+                    uint64_t const num_threads = UINT64_C(1) << (num_qubits_local - (GateType::num_target_qubits - 1));
+                    uint64_t const block_size = std::min<uint64_t>(block_size_max, num_threads);
+                    uint64_t const num_blocks = (num_threads + block_size - 1) / block_size;
+                    int const peer = my_node_local_rank ^ (1 << uva_rank_bit);
+                    ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, cuda_gate_uva_naive<GateType>, num_blocks, block_size, 0, stream,
+                                                            gateobj, targets, num_qubits_local, uva_target_index,
+                                                            uva_rank_bit, peer, local_control_mask, local_control_value);
+                }
+                ATLC_CHECK_CUDA(cudaStreamSynchronize, stream);
+                ATLC_CHECK_MPI(MPI_Barrier, node_local_comm);
+            }
+            else if (proc_num_control_condition)
             {
                 ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, cuda_gate<GateType>, num_blocks_gateop, block_size_gateop, 0, stream, gateobj);
             }
@@ -2852,6 +3009,7 @@ int main() {
                 ATLC_CHECK_CUDA(cudaEventDestroy, event);
             }
             ATLC_CHECK_CUDA(cudaStreamDestroy, stream);
+            ATLC_CHECK_MPI(MPI_Comm_free, &node_local_comm);
             MPI_Finalize();
         };
 
