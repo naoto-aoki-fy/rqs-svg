@@ -1,7 +1,6 @@
 -include config.mk
 
-MPICXX ?= mpicxx
-NVCC ?= nvcc -ccbin $(MPICXX) --forward-unknown-to-host-compiler
+NVCC ?= nvcc --forward-unknown-to-host-compiler
 NVCC_CFLAGS = $(CFLAGS_VENDOR) -Wformat=2 -O3 -std=c++17 -Xcompiler -fopenmp -Wno-deprecated-gpu-targets $(GENCODE_FLAGS)
 NVCC_LDFLAGS = $(LDFLAGS_VENDOR) $(LDLIBS) --cudart=shared
 QCS_BIN ?= bin/qcs
