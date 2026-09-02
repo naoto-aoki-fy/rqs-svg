@@ -8,10 +8,9 @@
 
 #include "cmdline.h"
 
-#include <unordered_set>
 #include <vector>
 
-#include <omp.h>
+#include <mpi.h>
 #include <cuda_runtime.h>
 #include <cuda/std/complex>
 #include <atlc/cuda.hpp>
@@ -141,8 +140,15 @@ int main(int argc, char** argv) {
 
     setvbuf(stdout, NULL, _IOLBF, 1024 * 512);
 
+    MPI_Init(&argc, &argv);
+    int rank;
+    int num_ranks;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &num_ranks);
+
     struct gengetopt_args_info args_info;
     if (cmdline_parser(argc, argv, &args_info) != 0) {
+        MPI_Finalize();
         return EXIT_FAILURE;
     }
 
@@ -151,6 +157,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "[error] invalid GPU list: %s\n", args_info.gpus_arg);
         cmdline_parser_print_help();
         cmdline_parser_free(&args_info);
+        MPI_Finalize();
         return EXIT_FAILURE;
     }
 
@@ -159,6 +166,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "[error] --num-qubits must be between 1 and 62: %d\n", num_qubits);
         cmdline_parser_print_help();
         cmdline_parser_free(&args_info);
+        MPI_Finalize();
         return EXIT_FAILURE;
     }
     int const num_samples = args_info.num_samples_arg;
@@ -166,12 +174,17 @@ int main(int argc, char** argv) {
         fprintf(stderr, "[error] --num-samples must be greater than 0: %d\n", num_samples);
         cmdline_parser_print_help();
         cmdline_parser_free(&args_info);
+        MPI_Finalize();
         return EXIT_FAILURE;
     }
     cmdline_parser_free(&args_info);
 
-    if (gpu_list.size() > max_num_gpus || (gpu_list.size() & (gpu_list.size() - 1)) != 0) {
-        fprintf(stderr, "[error] GPU list must contain 1, 2, 4, or 8 GPU IDs\n");
+    if (gpu_list.size() > max_num_gpus || (gpu_list.size() & (gpu_list.size() - 1)) != 0 ||
+        static_cast<int>(gpu_list.size()) != num_ranks) {
+        if (rank == 0) {
+            fprintf(stderr, "[error] GPU list must contain one GPU ID per MPI rank (1, 2, 4, or 8)\n");
+        }
+        MPI_Finalize();
         return EXIT_FAILURE;
     }
 
@@ -179,13 +192,16 @@ int main(int argc, char** argv) {
     int const log_num_gpus = atlc::log2_int(num_gpus);
     if (num_qubits <= log_num_gpus) {
         fprintf(stderr, "[error] num_qubits must be greater than log2(num_gpus)\n");
+        MPI_Finalize();
         return EXIT_FAILURE;
     }
-    fprintf(stderr, "[info] num_gpus=%d (", num_gpus);
-    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-        fprintf(stderr, "%d, ", gpu_list[gpu_num]);
+    if (rank == 0) {
+        fprintf(stderr, "[info] num_gpus=%d (", num_gpus);
+        for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+            fprintf(stderr, "%d, ", gpu_list[gpu_num]);
+        }
+        fprintf(stderr, ")\n");
     }
-    fprintf(stderr, ")\n");
 
     fprintf(stderr, "[info] num_qubits=%d\n", num_qubits);
 
@@ -196,77 +212,23 @@ int main(int argc, char** argv) {
     int const target_qubit_num_end = num_qubits;
     // int const target_qubit_num_end = 1;
 
-    std::vector<int> gpu_list_dedup;
-    {
-        std::unordered_set<int> gpu_set(gpu_list.begin(), gpu_list.end());
-        gpu_list_dedup = {gpu_set.begin(), gpu_set.end()};
-    }
-
-    std::vector<cudaStream_t> stream(num_gpus);
-    std::vector<cudaEvent_t> event_1(num_gpus);
-    std::vector<cudaEvent_t> event_2(num_gpus);
-    std::vector<cudaEvent_t> done(num_gpus);
-    cudaEvent_t layer_done;
-
-    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-
-        int const gpu_id = gpu_list[gpu_num]; 
-        ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
-
-        ATLC_CHECK_CUDA(cudaStreamCreate, &stream[gpu_num]);
-
-        ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &event_1[gpu_num], cudaEventDefault);
-
-        ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &event_2[gpu_num], cudaEventDefault);
-
-        ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &done[gpu_num], cudaEventDisableTiming);
-
-    }
-    ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[0]);
-    ATLC_CHECK_CUDA(cudaEventCreateWithFlags, &layer_done, cudaEventDisableTiming);
+    int const gpu_id = gpu_list[rank];
+    ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
+    cudaStream_t stream;
+    cudaEvent_t event_1;
+    cudaEvent_t event_2;
+    ATLC_CHECK_CUDA(cudaStreamCreate, &stream);
+    ATLC_CHECK_CUDA(cudaEventCreate, &event_1);
+    ATLC_CHECK_CUDA(cudaEventCreate, &event_2);
     ATLC_DEFER_CODE({
-        ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[0]);
-        ATLC_CHECK_CUDA(cudaEventDestroy, layer_done);
-        for (int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-            ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[gpu_num]);
-            ATLC_CHECK_CUDA(cudaEventDestroy, done[gpu_num]);
-            ATLC_CHECK_CUDA(cudaEventDestroy, event_2[gpu_num]);
-            ATLC_CHECK_CUDA(cudaEventDestroy, event_1[gpu_num]);
-            ATLC_CHECK_CUDA(cudaStreamDestroy, stream[gpu_num]);
-        }
+        ATLC_CHECK_CUDA(cudaEventDestroy, event_2);
+        ATLC_CHECK_CUDA(cudaEventDestroy, event_1);
+        ATLC_CHECK_CUDA(cudaStreamDestroy, stream);
     });
 
-    // Join all GPU streams without blocking the host. Events may be waited on
-    // from a stream belonging to another device, so stream 0 can coordinate a
-    // layer and fan the resulting dependency back out to every GPU.
-    auto enqueue_inter_gpu_barrier = [&]() {
-        for (int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-            ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[gpu_num]);
-            ATLC_CHECK_CUDA(cudaEventRecord, done[gpu_num], stream[gpu_num]);
-        }
-
-        ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[0]);
-        for (int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-            ATLC_CHECK_CUDA(cudaStreamWaitEvent, stream[0], done[gpu_num], 0);
-        }
-        ATLC_CHECK_CUDA(cudaEventRecord, layer_done, stream[0]);
-
-        for (int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-            ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[gpu_num]);
-            ATLC_CHECK_CUDA(cudaStreamWaitEvent, stream[gpu_num], layer_done, 0);
-        }
-    };
-
-    std::vector<my_complex_t**> state_data_device_list_constmem_addr(num_gpus);
-    for(int gpu_num=0; gpu_num<num_gpus; gpu_num++) {
-        int const gpu_id = gpu_list[gpu_num];
-        ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
-
-        my_complex_t** addr;
-        ATLC_CHECK_CUDA(cudaGetSymbolAddress<decltype(state_data_device_list_constmem)>, (void**)&addr, state_data_device_list_constmem);
-
-        state_data_device_list_constmem_addr[gpu_num] = addr;
-    }
+    my_complex_t** state_data_device_list_constmem_addr;
+    ATLC_CHECK_CUDA(cudaGetSymbolAddress<decltype(state_data_device_list_constmem)>,
+        (void**)&state_data_device_list_constmem_addr, state_data_device_list_constmem);
 
     int const num_qubits_local = num_qubits - log_num_gpus;
     int64_t const num_states_local = ((int64_t)1) << ((int64_t)num_qubits_local);
@@ -275,135 +237,91 @@ int main(int argc, char** argv) {
 
     fprintf(stderr, "[info] malloc device memory\n");
 
-    std::vector<my_complex_t*> state_data_device_list(num_gpus);
+    my_complex_t* state_data_device;
+    ATLC_CHECK_CUDA(cudaMalloc, &state_data_device, num_states_local * sizeof(*state_data_device));
 
-    for (int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
+    cudaIpcMemHandle_t local_handle;
+    ATLC_CHECK_CUDA(cudaIpcGetMemHandle, &local_handle, state_data_device);
+    std::vector<cudaIpcMemHandle_t> handles(num_ranks);
+    MPI_Allgather(&local_handle, sizeof(local_handle), MPI_BYTE,
+        handles.data(), sizeof(local_handle), MPI_BYTE, MPI_COMM_WORLD);
 
-        int const gpu_id = gpu_list[gpu_num]; 
-        ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
-
-        my_complex_t* state_data_device;
-        ATLC_CHECK_CUDA(cudaMalloc, &state_data_device, num_states_local * sizeof(*state_data_device));
-        state_data_device_list[gpu_num] = state_data_device;
-
+    std::vector<my_complex_t*> state_data_device_list(num_ranks);
+    state_data_device_list[rank] = state_data_device;
+    for (int peer = 0; peer < num_ranks; ++peer) {
+        if (peer != rank) {
+            ATLC_CHECK_CUDA(cudaIpcOpenMemHandle, &state_data_device_list[peer],
+                handles[peer], cudaIpcMemLazyEnablePeerAccess);
+        }
     }
     ATLC_DEFER_CODE({
-        for (int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-            ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[gpu_num]);
-            ATLC_CHECK_CUDA(cudaFree, state_data_device_list[gpu_num]);
-        }
-    });
-
-    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-        int const gpu_id = gpu_list[gpu_num];
-        ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
-        ATLC_CHECK_CUDA(cudaMemcpyAsync, state_data_device_list_constmem_addr[gpu_num], &state_data_device_list[0], state_data_device_list.size() * sizeof(state_data_device_list[0]), cudaMemcpyHostToDevice, stream[gpu_num]);
-    }
-
-    for(int gpu_num = 0; gpu_num < gpu_list_dedup.size(); gpu_num++) {
-        int const gpu_id = gpu_list_dedup[gpu_num]; 
-        for(int gpu_num_2 = 0; gpu_num_2 < gpu_list_dedup.size(); gpu_num_2++) {
-            if(gpu_num == gpu_num_2) continue;
-            int const gpu_id_2 = gpu_list_dedup[gpu_num_2]; 
-            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
-            ATLC_CHECK_CUDA(cudaDeviceEnablePeerAccess, gpu_id_2, 0);
-        }
-    }
-
-    for(int gpu_num = 0; gpu_num < gpu_list_dedup.size(); gpu_num++) {
-        int const gpu_id = gpu_list_dedup[gpu_num]; 
-        for(int gpu_num_2 = 0; gpu_num_2 < gpu_list_dedup.size(); gpu_num_2++) {
-            if(gpu_num == gpu_num_2) continue;
-            int const gpu_id_2 = gpu_list_dedup[gpu_num_2]; 
-            int canAccessPeer;
-            ATLC_CHECK_CUDA(cudaDeviceCanAccessPeer, &canAccessPeer, gpu_id, gpu_id_2);
-            if (!canAccessPeer) {
-                fprintf(stderr, "[error] GPU%d can not access GPU%d\n", gpu_id, gpu_id_2);
+        for (int peer = 0; peer < num_ranks; ++peer) {
+            if (peer != rank) {
+                ATLC_CHECK_CUDA(cudaIpcCloseMemHandle, state_data_device_list[peer]);
             }
         }
-    }
+        ATLC_CHECK_CUDA(cudaFree, state_data_device);
+    });
+
+    ATLC_CHECK_CUDA(cudaMemcpyAsync, state_data_device_list_constmem_addr,
+        state_data_device_list.data(), state_data_device_list.size() * sizeof(state_data_device_list[0]),
+        cudaMemcpyHostToDevice, stream);
 
 
     fprintf(stderr, "[info] initializing state to |0...0>\n");
-    for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-        int const gpu_id = gpu_list[gpu_num];
-        ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
-        ATLC_CHECK_CUDA(cudaMemsetAsync, state_data_device_list[gpu_num], 0,
-            num_states_local * sizeof(*state_data_device_list[gpu_num]), stream[gpu_num]);
-    }
+    ATLC_CHECK_CUDA(cudaMemsetAsync, state_data_device, 0,
+        num_states_local * sizeof(*state_data_device), stream);
 
     my_complex_t const zero_state_amplitude(1.0, 0.0);
-    ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[0]);
-    ATLC_CHECK_CUDA(cudaMemcpyAsync, state_data_device_list[0], &zero_state_amplitude,
-        sizeof(zero_state_amplitude), cudaMemcpyHostToDevice, stream[0]);
-    enqueue_inter_gpu_barrier();
-    ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[0]);
-    ATLC_CHECK_CUDA(cudaEventSynchronize, layer_done);
+    if (rank == 0) {
+        ATLC_CHECK_CUDA(cudaMemcpyAsync, state_data_device, &zero_state_amplitude,
+            sizeof(zero_state_amplitude), cudaMemcpyHostToDevice, stream);
+    }
+    ATLC_CHECK_CUDA(cudaStreamSynchronize, stream);
+    MPI_Barrier(MPI_COMM_WORLD);
 
     fprintf(stderr, "[info] gpu_hadamard\n");
 
     for(int sample_num = 0; sample_num < num_samples; ++sample_num) {
 
-        for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-            int const gpu_id = gpu_list[gpu_num]; 
-            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
-            ATLC_CHECK_CUDA(cudaEventRecord, event_1[gpu_num], stream[gpu_num]);
-        }
+        ATLC_CHECK_CUDA(cudaEventRecord, event_1, stream);
 
         for(int target_qubit_num = target_qubit_num_begin; target_qubit_num < target_qubit_num_end; target_qubit_num++) {
 
-            // The first global gate reads state owned by other GPUs.  Wait for
-            // every GPU's preceding local gates before allowing those reads.
-            if (target_qubit_num == num_qubits - log_num_gpus) {
-                enqueue_inter_gpu_barrier();
-            }
-
-            for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-
-                int const gpu_id = gpu_list[gpu_num]; 
-                ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
-
-                if (target_qubit_num < num_qubits - log_num_gpus) {
-                    ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, cuda_gate<hadamard_local>, num_blocks, block_size, 0, stream[gpu_num], num_gpus, log_num_gpus, gpu_num, num_qubits, target_qubit_num);
-                } else {
-                    ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, cuda_gate<hadamard_global>, num_blocks, block_size, 0, stream[gpu_num], num_gpus, log_num_gpus, gpu_num, num_qubits, target_qubit_num);
+            if (target_qubit_num < num_qubits - log_num_gpus) {
+                ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, cuda_gate<hadamard_local>, num_blocks,
+                    block_size, 0, stream, num_gpus, log_num_gpus, rank, num_qubits, target_qubit_num);
+            } else {
+                if (target_qubit_num == num_qubits - log_num_gpus) {
+                    // The first global gate may read a peer's state split, so
+                    // all preceding local gates must have completed first.
+                    ATLC_CHECK_CUDA(cudaStreamSynchronize, stream);
+                    MPI_Barrier(MPI_COMM_WORLD);
                 }
-            }
-
-            if (target_qubit_num >= num_qubits - log_num_gpus && target_qubit_num < target_qubit_num_end - 1) {
-                enqueue_inter_gpu_barrier();
-            }
-
-        }
-
-        for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-            int const gpu_id = gpu_list[gpu_num]; 
-            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
-            ATLC_CHECK_CUDA(cudaEventRecord, event_2[gpu_num], stream[gpu_num]);
-        }
-
-        enqueue_inter_gpu_barrier();
-        ATLC_CHECK_CUDA(cudaSetDevice, gpu_list[0]);
-        ATLC_CHECK_CUDA(cudaEventSynchronize, layer_done);
-
-        double elapsed_gpu = 0;
-        for(int gpu_num = 0; gpu_num < num_gpus; gpu_num++) {
-            int const gpu_id = gpu_list[gpu_num]; 
-            ATLC_CHECK_CUDA(cudaSetDevice, gpu_id);
-
-            float elapsed_i_ms;
-            ATLC_CHECK_CUDA(cudaEventElapsedTime, &elapsed_i_ms, event_1[gpu_num], event_2[gpu_num]);
-            double const elapsed_i = elapsed_i_ms * 1e-3;
-
-            if(elapsed_i > elapsed_gpu) {
-                elapsed_gpu = elapsed_i;
+                ATLC_CHECK_CUDA(atlc::cudaLaunchKernel, cuda_gate<hadamard_global>, num_blocks,
+                    block_size, 0, stream, num_gpus, log_num_gpus, rank, num_qubits, target_qubit_num);
+                // Remote state is consumed by the next global gate.  Complete
+                // CUDA work on every rank before proceeding collectively.
+                ATLC_CHECK_CUDA(cudaStreamSynchronize, stream);
+                MPI_Barrier(MPI_COMM_WORLD);
             }
         }
-        fprintf(stderr, "[info] elapsed_gpu=%lf\n", elapsed_gpu);
-        fprintf(stdout, "%lf\n", elapsed_gpu);
 
+        ATLC_CHECK_CUDA(cudaEventRecord, event_2, stream);
+        ATLC_CHECK_CUDA(cudaEventSynchronize, event_2);
+
+        float elapsed_ms;
+        ATLC_CHECK_CUDA(cudaEventElapsedTime, &elapsed_ms, event_1, event_2);
+        double const elapsed_local = elapsed_ms * 1e-3;
+        double elapsed_max;
+        MPI_Reduce(&elapsed_local, &elapsed_max, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+        if (rank == 0) {
+            fprintf(stderr, "[info] elapsed_gpu=%lf\n", elapsed_max);
+            fprintf(stdout, "%lf\n", elapsed_max);
+        }
     }
 
+    MPI_Finalize();
     return 0;
 
 }
