@@ -1644,17 +1644,30 @@ namespace qcs
     __device__ void apply_uva_gate_naive(
         GateType const &gateobj, qcs::complex_t const *input, qcs::complex_t *output)
     {
+        auto const args = (qcs::kernel_input_qnlist_struct const *)(void *)qcs::kernel_input_constant;
+        qcs::complex_t const *observed_input[16];
+        int const num_states = 1 << GateType::num_target_qubits;
+        for (int state = 0; state < num_states; ++state)
+        {
+            bool const matches_observation =
+                (state & args->is_measured_bits) == args->measured_value_bits;
+            observed_input[state] = matches_observation ? &input[state] : &zero_constant;
+        }
+
         if constexpr (GateType::num_target_qubits == 1)
-            gateobj.apply(input[0], input[1], output[0], output[1]);
+            gateobj.apply(*observed_input[0], *observed_input[1], output[0], output[1]);
         else if constexpr (GateType::num_target_qubits == 2)
-            gateobj.apply(input[0], input[1], input[2], input[3],
+            gateobj.apply(*observed_input[0], *observed_input[1], *observed_input[2], *observed_input[3],
                           output[0], output[1], output[2], output[3]);
         else if constexpr (GateType::num_target_qubits == 3)
-            gateobj.apply(input[0], input[1], input[2], input[3], input[4], input[5], input[6], input[7],
+            gateobj.apply(*observed_input[0], *observed_input[1], *observed_input[2], *observed_input[3],
+                          *observed_input[4], *observed_input[5], *observed_input[6], *observed_input[7],
                           output[0], output[1], output[2], output[3], output[4], output[5], output[6], output[7]);
         else if constexpr (GateType::num_target_qubits == 4)
-            gateobj.apply(input[0], input[1], input[2], input[3], input[4], input[5], input[6], input[7],
-                          input[8], input[9], input[10], input[11], input[12], input[13], input[14], input[15],
+            gateobj.apply(*observed_input[0], *observed_input[1], *observed_input[2], *observed_input[3],
+                          *observed_input[4], *observed_input[5], *observed_input[6], *observed_input[7],
+                          *observed_input[8], *observed_input[9], *observed_input[10], *observed_input[11],
+                          *observed_input[12], *observed_input[13], *observed_input[14], *observed_input[15],
                           output[0], output[1], output[2], output[3], output[4], output[5], output[6], output[7],
                           output[8], output[9], output[10], output[11], output[12], output[13], output[14], output[15]);
     }
