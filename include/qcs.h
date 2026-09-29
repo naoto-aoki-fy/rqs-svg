@@ -73,6 +73,8 @@ void qcs_simulator_gate_rccx_cxx(qcs_simulator *sim, const bit_num_t *target_qub
 void qcs_simulator_gate_rcccx_cxx(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count);
 int qcs_simulator_measure_cxx(qcs_simulator *sim, bit_num_t qubit_num);
 int qcs_simulator_measure_to_clbit_cxx(qcs_simulator *sim, bit_num_t qubit_num, bit_num_t clbit_num);
+void qcs_simulator_measure_many_cxx(qcs_simulator *sim, const bit_num_t *qubit_num_list, bit_num_t qubit_num_count, bit_t *results);
+void qcs_simulator_measure_many_to_clbits_cxx(qcs_simulator *sim, const bit_num_t *qubit_num_list, bit_num_t qubit_num_count, const bit_num_t *clbit_num_list, bit_num_t clbit_num_count, bit_t *results);
 int qcs_simulator_read_cxx(qcs_simulator *sim, bit_num_t clbit_num);
 void qcs_simulator_save_statevector_cxx(qcs_simulator *sim, const char *outfn);
 int qcs_simulator_event_create_cxx(qcs_simulator *sim);
@@ -141,6 +143,14 @@ int qcs_simulator_gate_rccx(qcs_simulator *sim, const bit_num_t *target_qubit_nu
 int qcs_simulator_gate_rcccx(qcs_simulator *sim, const bit_num_t *target_qubit_num_list, bit_num_t target_qubit_num_count, const bit_num_t *negctrl_qubit_num_list, bit_num_t negctrl_qubit_num_count, const bit_num_t *ctrl_qubit_num_list, bit_num_t ctrl_qubit_num_count);
 int qcs_simulator_measure(qcs_simulator *sim, bit_num_t qubit_num, bit_t *result);
 int qcs_simulator_measure_to_clbit(qcs_simulator *sim, bit_num_t qubit_num, bit_num_t clbit_num, bit_t *result);
+/*
+ * Measure distinct logical qubits in Z basis.  Results preserve input order:
+ * results[i] belongs to qubit_num_list[i].  A zero-count request is a
+ * successful no-op and permits NULL list/result pointers.
+ */
+int qcs_simulator_measure_many(qcs_simulator *sim, const bit_num_t *qubit_num_list, bit_num_t qubit_num_count, bit_t *results);
+/* As above, then assigns results[i] to clbit_num_list[i].  Counts must match. */
+int qcs_simulator_measure_many_to_clbits(qcs_simulator *sim, const bit_num_t *qubit_num_list, bit_num_t qubit_num_count, const bit_num_t *clbit_num_list, bit_num_t clbit_num_count, bit_t *results);
 int qcs_simulator_read(qcs_simulator *sim, bit_num_t clbit_num, bit_t *result);
 int qcs_simulator_save_statevector(qcs_simulator *sim, const char *outfn);
 int qcs_simulator_event_create(qcs_simulator *sim, bit_t *result);

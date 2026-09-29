@@ -2661,21 +2661,17 @@ namespace qcs
                     measure_norm_global[0], measure_norm_global[1]));
             }
 
-            std::uniform_real_distribution<qcs::float_t> dist1(0, measure_norm_sum);
-            qcs::float_t const random_value = dist1(engine);
-            int measure_result;
-            if (!(measure_norm_global[0] > 0))
+            int measure_result = 0;
+            if (proc_num == 0)
             {
-                measure_result = 1;
+                std::uniform_real_distribution<qcs::float_t> dist1(0, measure_norm_sum);
+                qcs::float_t const random_value = dist1(engine);
+                if (!(measure_norm_global[0] > 0))
+                    measure_result = 1;
+                else if (measure_norm_global[1] > 0)
+                    measure_result = measure_norm_global[0] < random_value;
             }
-            else if (!(measure_norm_global[1] > 0))
-            {
-                measure_result = 0;
-            }
-            else
-            {
-                measure_result = measure_norm_global[0] < random_value;
-            }
+            ATLC_CHECK_MPI(MPI_Bcast, &measure_result, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
             if (measure_result)
             { /* 1 */
@@ -3127,6 +3123,78 @@ int qcs_simulator_measure_to_clbit_cxx(qcs_simulator *sim, bit_num_t qubit_num, 
     int const result = qcs_simulator_measure_cxx(sim, qubit_num);
     sim->clbits[clbit_num] = result;
     return result;
+}
+
+static std::vector<int> qcs_validate_measure_many(
+    qcs_simulator *sim, bit_num_t const *qubit_num_list,
+    bit_num_t qubit_num_count, bit_t *results)
+{
+    if (sim == NULL)
+        throw std::runtime_error("simulator pointer must not be NULL");
+    if (qubit_num_count < 0)
+        throw std::runtime_error("qubit count must be non-negative");
+    if (qubit_num_count > 0 && qubit_num_list == NULL)
+        throw std::runtime_error("qubit list must not be NULL when qubit count is positive");
+    if (qubit_num_count > 0 && results == NULL)
+        throw std::runtime_error("results pointer must not be NULL when qubit count is positive");
+
+    std::vector<int> qubits;
+    qubits.reserve(qubit_num_count);
+    std::vector<bool> used(sim->num_qubits, false);
+    for (int i = 0; i < qubit_num_count; ++i)
+    {
+        int const qubit_num = qubit_num_list[i];
+        if (qubit_num < 0 || qubit_num >= sim->num_qubits)
+            throw std::runtime_error(atlc::format("qubit %d is out of range [0, %d)", qubit_num, sim->num_qubits));
+        if (used[qubit_num])
+            throw std::runtime_error(atlc::format("qubit %d appears multiple times", qubit_num));
+        used[qubit_num] = true;
+        qubits.push_back(qubit_num);
+    }
+    return qubits;
+}
+
+void qcs_simulator_measure_many_cxx(qcs_simulator *sim, bit_num_t const *qubit_num_list,
+                                    bit_num_t qubit_num_count, bit_t *results)
+{
+    std::vector<int> const qubits = qcs_validate_measure_many(sim, qubit_num_list, qubit_num_count, results);
+    std::vector<bit_t> temporary_results(qubits.size());
+    for (size_t i = 0; i < qubits.size(); ++i)
+        temporary_results[i] = static_cast<bit_t>(sim->core->measure_qubit(qubits[i]));
+    if (!temporary_results.empty())
+        std::copy(temporary_results.begin(), temporary_results.end(), results);
+}
+
+void qcs_simulator_measure_many_to_clbits_cxx(
+    qcs_simulator *sim, bit_num_t const *qubit_num_list, bit_num_t qubit_num_count,
+    bit_num_t const *clbit_num_list, bit_num_t clbit_num_count, bit_t *results)
+{
+    std::vector<int> const qubits = qcs_validate_measure_many(sim, qubit_num_list, qubit_num_count, results);
+    if (clbit_num_count < 0)
+        throw std::runtime_error("classical bit count must be non-negative");
+    if (clbit_num_count != qubit_num_count)
+        throw std::runtime_error("qubit and classical bit counts must match");
+    if (clbit_num_count > 0 && clbit_num_list == NULL)
+        throw std::runtime_error("classical bit list must not be NULL when its count is positive");
+
+    std::vector<bool> used(sim->num_clbits, false);
+    for (int i = 0; i < clbit_num_count; ++i)
+    {
+        int const clbit_num = clbit_num_list[i];
+        if (clbit_num < 0 || clbit_num >= sim->num_clbits)
+            throw std::runtime_error(atlc::format("classical bit %d is out of range [0, %d)", clbit_num, sim->num_clbits));
+        if (used[clbit_num])
+            throw std::runtime_error(atlc::format("classical bit %d appears multiple times", clbit_num));
+        used[clbit_num] = true;
+    }
+
+    std::vector<bit_t> temporary_results(qubits.size());
+    for (size_t i = 0; i < qubits.size(); ++i)
+        temporary_results[i] = static_cast<bit_t>(sim->core->measure_qubit(qubits[i]));
+    for (size_t i = 0; i < qubits.size(); ++i)
+        sim->clbits[clbit_num_list[i]] = temporary_results[i];
+    if (!temporary_results.empty())
+        std::copy(temporary_results.begin(), temporary_results.end(), results);
 }
 int qcs_simulator_read_cxx(qcs_simulator *sim, bit_num_t clbit_num) { return sim->clbits[clbit_num]; }
 void qcs_simulator_reset_cxx(qcs_simulator *sim, bit_num_t qubit_num)
@@ -3781,6 +3849,18 @@ extern "C" int qcs_simulator_measure_to_clbit(qcs_simulator *sim, bit_num_t qubi
 {
     return qcs_try_cxx([&]()
                        { qcs_write_result(result, qcs_simulator_measure_to_clbit_cxx(sim, qubit_num, clbit_num)); });
+}
+
+extern "C" int qcs_simulator_measure_many(qcs_simulator *sim, bit_num_t const *qubit_num_list, bit_num_t qubit_num_count, bit_t *results)
+{
+    return qcs_try_cxx([&]()
+                       { qcs_simulator_measure_many_cxx(sim, qubit_num_list, qubit_num_count, results); });
+}
+
+extern "C" int qcs_simulator_measure_many_to_clbits(qcs_simulator *sim, bit_num_t const *qubit_num_list, bit_num_t qubit_num_count, bit_num_t const *clbit_num_list, bit_num_t clbit_num_count, bit_t *results)
+{
+    return qcs_try_cxx([&]()
+                       { qcs_simulator_measure_many_to_clbits_cxx(sim, qubit_num_list, qubit_num_count, clbit_num_list, clbit_num_count, results); });
 }
 
 extern "C" int qcs_simulator_read(qcs_simulator *sim, bit_num_t clbit_num, bit_t *result)

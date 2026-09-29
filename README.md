@@ -78,6 +78,28 @@ Code examples for linking against `libqcs.so` live under
 Python bindings are maintained separately at
 [`rqs-svg-py`](https://github.com/naoto-aoki-fy/rqs-svg-py).
 
+### Measuring multiple qubits
+
+`qcs_simulator_measure_many` measures an ordered list of distinct logical
+qubits in the Z basis and returns one correlated result per input element.
+`qcs_simulator_measure_many_to_clbits` additionally writes each result to the
+classical bit at the corresponding position in its destination list.  The two
+counts must match and destinations must be distinct.  An empty request is a
+successful no-op.
+
+```c
+const bit_num_t qubits[] = {5, 1, 3};
+const bit_num_t clbits[] = {0, 2, 4};
+bit_t results[3];
+
+int ok = qcs_simulator_measure_many_to_clbits(
+    sim, qubits, 3, clbits, 3, results);
+```
+
+All MPI ranks must invoke a measurement with the same ordered lists.  A later
+measurement observes the already selected branch; prepare the state again for
+an independent shot.
+
 ## Running
 
 You can execute the built simulator via:
