@@ -97,6 +97,49 @@ void qcs_simulator_reset_measurement_state_cxx(qcs_simulator *sim) { require_sim
 void qcs_simulator_reinitialize_mapping_cxx(qcs_simulator *sim) { require_simulator(sim); }
 int qcs_simulator_measure_cxx(qcs_simulator *sim, bit_num_t) { require_simulator(sim); return 0; }
 int qcs_simulator_measure_to_clbit_cxx(qcs_simulator *sim, bit_num_t, bit_num_t clbit) { require_simulator(sim); if (clbit < 0 || clbit >= sim->num_clbits) throw std::out_of_range("clbit is out of range"); sim->clbits[clbit] = 0; return 0; }
+void qcs_simulator_measure_many_cxx(qcs_simulator *sim, const bit_num_t *qubits, bit_num_t count, bit_t *results)
+{
+    require_simulator(sim);
+    if (count < 0)
+        throw std::invalid_argument("qubit count must not be negative");
+    if (count > 0 && (qubits == nullptr || results == nullptr))
+        throw std::invalid_argument("qubits and results must not be null");
+
+    std::vector<bool> used(sim->num_qubits, false);
+    for (bit_num_t i = 0; i < count; ++i)
+    {
+        if (qubits[i] < 0 || qubits[i] >= sim->num_qubits)
+            throw std::out_of_range("qubit is out of range");
+        if (used[qubits[i]])
+            throw std::invalid_argument("qubit appears multiple times");
+        used[qubits[i]] = true;
+    }
+    if (count > 0)
+        std::fill(results, results + count, 0);
+}
+void qcs_simulator_measure_many_to_clbits_cxx(qcs_simulator *sim, const bit_num_t *qubits, bit_num_t qubit_count, const bit_num_t *clbits, bit_num_t clbit_count, bit_t *results)
+{
+    require_simulator(sim);
+    if (clbit_count < 0)
+        throw std::invalid_argument("classical bit count must not be negative");
+    if (clbit_count != qubit_count)
+        throw std::invalid_argument("qubit and classical bit counts must match");
+    if (clbit_count > 0 && clbits == nullptr)
+        throw std::invalid_argument("classical bits must not be null");
+
+    std::vector<bool> used(sim->num_clbits, false);
+    for (bit_num_t i = 0; i < clbit_count; ++i)
+    {
+        if (clbits[i] < 0 || clbits[i] >= sim->num_clbits)
+            throw std::out_of_range("classical bit is out of range");
+        if (used[clbits[i]])
+            throw std::invalid_argument("classical bit appears multiple times");
+        used[clbits[i]] = true;
+    }
+    qcs_simulator_measure_many_cxx(sim, qubits, qubit_count, results);
+    for (bit_num_t i = 0; i < clbit_count; ++i)
+        sim->clbits[clbits[i]] = results[i];
+}
 int qcs_simulator_read_cxx(qcs_simulator *sim, bit_num_t clbit) { require_simulator(sim); if (clbit < 0 || clbit >= sim->num_clbits) throw std::out_of_range("clbit is out of range"); return sim->clbits[clbit]; }
 void qcs_simulator_save_statevector_cxx(qcs_simulator *sim, const char *path) { require_simulator(sim); if (!path) throw std::invalid_argument("output path must not be null"); FILE *file = std::fopen(path, "wb"); if (!file) throw std::runtime_error("failed to create statevector placeholder"); std::fclose(file); }
 int qcs_simulator_event_create_cxx(qcs_simulator *sim) { require_simulator(sim); sim->events.emplace_back(); return static_cast<int>(sim->events.size() - 1); }
@@ -151,6 +194,8 @@ C_STATUS(gate_u4, (qcs_simulator *sim, double a, double b, double c, double d, c
 C_STATUS(gate_global_phase, (qcs_simulator *sim, double a, const bit_num_t *n, bit_num_t nc, const bit_num_t *x, bit_num_t xc), qcs_simulator_gate_global_phase_cxx(sim,a,n,nc,x,xc))
 C_STATUS(measure, (qcs_simulator *sim, bit_num_t q, bit_t *out), write_result(out, static_cast<bit_t>(qcs_simulator_measure_cxx(sim,q))))
 C_STATUS(measure_to_clbit, (qcs_simulator *sim, bit_num_t q, bit_num_t c, bit_t *out), write_result(out, static_cast<bit_t>(qcs_simulator_measure_to_clbit_cxx(sim,q,c))))
+C_STATUS(measure_many, (qcs_simulator *sim, const bit_num_t *q, bit_num_t n, bit_t *out), qcs_simulator_measure_many_cxx(sim,q,n,out))
+C_STATUS(measure_many_to_clbits, (qcs_simulator *sim, const bit_num_t *q, bit_num_t qn, const bit_num_t *c, bit_num_t cn, bit_t *out), qcs_simulator_measure_many_to_clbits_cxx(sim,q,qn,c,cn,out))
 C_STATUS(read, (qcs_simulator *sim, bit_num_t c, bit_t *out), write_result(out, static_cast<bit_t>(qcs_simulator_read_cxx(sim,c))))
 C_STATUS(save_statevector, (qcs_simulator *sim, const char *p), qcs_simulator_save_statevector_cxx(sim,p))
 C_STATUS(event_create, (qcs_simulator *sim, bit_t *out), write_result(out, static_cast<bit_t>(qcs_simulator_event_create_cxx(sim))))
