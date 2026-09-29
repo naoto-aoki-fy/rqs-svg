@@ -1650,8 +1650,22 @@ namespace qcs
 
         struct IndirectLoad
         {
+            bool is_global;
+            int rank_value;
+
             __device__ qcs::float2_t operator()(uint64_t thread_num) const
             {
+                if (is_global)
+                {
+                    uint64_t index_state;
+                    thread_num_to_state_index_q0(thread_num, index_state);
+
+                    qcs::float_t const norm = cuda::std::norm(qcs::kernel_common_constant.state_data_device[index_state]);
+                    return rank_value
+                               ? qcs::float2_t{0, norm}
+                               : qcs::float2_t{norm, 0};
+                }
+
                 uint64_t index_state_0, index_state_1;
                 int is_measured_bits, measured_value_bits;
                 thread_num_to_state_index_q1(thread_num, index_state_0, index_state_1, is_measured_bits, measured_value_bits);
@@ -2578,10 +2592,22 @@ namespace qcs
                 }
             }
 
-            target_qubit_num_logical_list = {measure_qubit_num_logical};
+            int const measure_qubit_num_physical = perm_l2p[measure_qubit_num_logical];
+            bool const is_global = measure_qubit_num_physical >= num_qubits_local;
+            int const rank_value = is_global
+                                       ? (uint64_t(proc_num) >> (measure_qubit_num_physical - num_qubits_local)) & 1
+                                       : 0;
+
+            target_qubit_num_logical_list.clear();
+            if (!is_global)
+            {
+                target_qubit_num_logical_list.push_back(measure_qubit_num_logical);
+            }
             positive_control_qubit_num_logical_list = measured_1_qubit_num_logical_list;
             negative_control_qubit_num_logical_list = measured_0_qubit_num_logical_list;
 
+            // A global measurement does not need a statevector exchange.  Keeping
+            // ensure_local_qubits() here clears its working lists for both paths.
             ensure_local_qubits();
             check_control_qubit_num_physical();
             prepare_operating_gate();
@@ -2591,7 +2617,7 @@ namespace qcs
             if (proc_num_control_condition)
             {
 
-                cubUtility::IndirectLoad loader;
+                cubUtility::IndirectLoad loader{is_global, rank_value};
 
                 using CountingIter = thrust::counting_iterator<uint64_t>;
                 using TransformIter = thrust::transform_iterator<decltype(loader), CountingIter>;
@@ -2625,13 +2651,31 @@ namespace qcs
 
 #if 1 /* parallel measurement */
             qcs::float_t measure_norm_global[2];
-            MPI_Allreduce(measure_norm_host.data(), measure_norm_global, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+            ATLC_CHECK_MPI(MPI_Allreduce, measure_norm_host.data(), measure_norm_global, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 
             qcs::float_t const measure_norm_sum = measure_norm_global[0] + measure_norm_global[1];
+            if (!(measure_norm_sum > 0) || !std::isfinite(measure_norm_sum))
+            {
+                throw std::runtime_error(atlc::format(
+                    "invalid measurement norm: norm0=%g norm1=%g",
+                    measure_norm_global[0], measure_norm_global[1]));
+            }
 
             std::uniform_real_distribution<qcs::float_t> dist1(0, measure_norm_sum);
             qcs::float_t const random_value = dist1(engine);
-            int measure_result = measure_norm_global[0] < random_value;
+            int measure_result;
+            if (!(measure_norm_global[0] > 0))
+            {
+                measure_result = 1;
+            }
+            else if (!(measure_norm_global[1] > 0))
+            {
+                measure_result = 0;
+            }
+            else
+            {
+                measure_result = measure_norm_global[0] < random_value;
+            }
 
             if (measure_result)
             { /* 1 */
