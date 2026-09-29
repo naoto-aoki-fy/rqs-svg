@@ -68,8 +68,8 @@ Build the shared library and then compile the C example:
 ```sh
 make sharedlibrary
 source ./env.bash
-gcc examples/sharedlibrary/ghz_from_c.c -lqcs -o ghz_from_c
-mpirun -np (NUM_GPUS) ./ghz_from_c
+gcc examples/sharedlibrary/ghz.c -lqcs -o ghz
+mpirun -np (NUM_GPUS) ./ghz
 ```
 
 Code examples for linking against `libqcs.so` live under
